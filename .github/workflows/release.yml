@@ -1,0 +1,101 @@
+name: Build & Release Campus Mesh APK
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*' # Triggers for tags like v1.0.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
+        with:
+          gradle-version: wrapper
+
+      - name: Cache Gradle files
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Grant execute permission for Gradlew
+        run: chmod +x ./gradlew
+
+      - name: Build Release APKs (with architecture splits)
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Rename APKs for GitHub Release
+        run: |
+          cd app/build/outputs/apk/release
+          [ -f "app-arm64-v8a-release-unsigned.apk" ] && mv app-arm64-v8a-release-unsigned.apk campus-mesh-arm64.apk
+          [ -f "app-x86_64-release-unsigned.apk" ] && mv app-x86_64-release-unsigned.apk campus-mesh-x86_64.apk
+          [ -f "app-universal-release-unsigned.apk" ] && mv app-universal-release-unsigned.apk campus-mesh-universal.apk
+
+      - name: Compute SHA-256 checksums
+        run: |
+          cd app/build/outputs/apk/release
+          sha256sum campus-mesh-*.apk > checksums.txt
+          cat checksums.txt
+
+      - name: Upload APKs as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: campus-mesh-release-${{ github.ref_name }}
+          path: |
+            app/build/outputs/apk/release/campus-mesh-*.apk
+            app/build/outputs/apk/release/checksums.txt
+          retention-days: 30
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: campus-mesh-release-${{ github.ref_name }}
+          path: release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/campus-mesh-arm64.apk
+            release/campus-mesh-x86_64.apk
+            release/campus-mesh-universal.apk
+            release/checksums.txt
+          name: "Campus Mesh ${{ github.ref_name }}"
+          body: |
+            ## Campus Mesh — GCTU Edition ${{ github.ref_name }}
+
+            ### Installation
+            - **Android (most phones)**: Download `campus-mesh-arm64.apk`
+            - **Android (older/x86 devices)**: Download `campus-mesh-universal.apk`
+            - **iPhone/Safari**: Scan the QR code in any peer's Campus Mesh app — no download needed!
+
+            ### SHA-256 Checksums
+            See `checksums.txt` attached to this release for integrity verification.
+
+            ### Offline Mesh OTA
+            This version propagates automatically to nearby peers via Bluetooth LE epidemic broadcast — even without internet!
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

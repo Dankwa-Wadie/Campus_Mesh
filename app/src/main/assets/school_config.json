@@ -1,0 +1,20 @@
+{
+  "school_name": "Ghana Communication Technology University",
+  "school_short": "GCTU",
+  "github_repo_owner": "campus-mesh",
+  "github_repo_name": "campus-mesh-android",
+  "campuses": [
+    {
+      "name": "Main Campus (Tesano)",
+      "lat": 5.6115,
+      "lon": -0.2290,
+      "radius_meters": 300
+    },
+    {
+      "name": "Abeka Campus (SITB)",
+      "lat": 5.6025,
+      "lon": -0.2425,
+      "radius_meters": 200
+    }
+  ]
+}

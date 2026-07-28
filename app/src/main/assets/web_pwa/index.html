@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campus Mesh — GCTU Offline Hub</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- PWA Manifest (Add to Home Screen - iOS Safari & Android Chrome) -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Campus Mesh">
+    <meta name="theme-color" content="#7C83FD">
+    <!-- Leaflet.js CSS for offline mapping -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+</head>
+<body>
+    <!-- Emergency Alert Banner -->
+    <div id="alert-banner" class="alert-banner-hidden">
+        <div class="alert-content">
+            <span class="alert-icon">⚠️</span>
+            <div class="alert-text-wrapper">
+                <strong class="alert-title">OFFICIAL EMERGENCY ALERT</strong>
+                <span id="alert-message" class="alert-body">Emergency alert message text.</span>
+            </div>
+            <button id="alert-close" class="alert-close-btn">&times;</button>
+        </div>
+    </div>
+
+    <!-- Onboarding Modal Overlay -->
+    <div id="onboarding-overlay" class="overlay">
+        <div class="glass-card onboarding-card">
+            <h1 class="brand-title">CAMPUS MESH</h1>
+            <p class="brand-subtitle">Ghana Communication Technology University</p>
+            <p class="onboarding-desc">Connect directly with nearby campus peers without internet, cellular data, or server costs.</p>
+            
+            <div class="input-group">
+                <label for="username-input">Choose Nickname</label>
+                <input type="text" id="username-input" placeholder="e.g. Kofi, Ama" maxlength="15">
+            </div>
+
+            <div class="input-group">
+                <label for="role-select">Select Your Role</label>
+                <select id="role-select">
+                    <option value="Student">Student</option>
+                    <option value="Lecturer">Lecturer</option>
+                </select>
+            </div>
+
+            <button id="join-btn" class="primary-btn">Join Campus Mesh</button>
+            <p id="keygen-status" class="status-msg-hidden">Generating secure hardware keypair...</p>
+        </div>
+    </div>
+
+    <!-- Main Application Interface -->
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar glass-panel">
+            <div class="sidebar-header">
+                <div class="brand">
+                    <span class="logo-dot"></span>
+                    <span class="brand-name">GCTU Mesh</span>
+                </div>
+                <div id="connection-badge" class="badge badge-disconnected">Offline</div>
+            </div>
+
+            <!-- User profile summary -->
+            <div class="profile-card">
+                <div class="avatar" id="user-avatar">👤</div>
+                <div class="profile-info">
+                    <div id="user-name" class="name">Anonymous</div>
+                    <div id="user-role" class="role">Student</div>
+                </div>
+            </div>
+
+            <!-- Channels Section -->
+            <div class="section-title">CHANNELS</div>
+            <nav class="channels-list">
+                <a href="#" class="channel-item active" data-channel="#general">
+                    <span class="hashtag">#</span>general
+                </a>
+                <a href="#" class="channel-item" data-channel="#computing-cis">
+                    <span class="hashtag">#</span>computing-cis
+                </a>
+                <a href="#" class="channel-item read-only-channel" data-channel="#gctu-announcements">
+                    <span class="hashtag">📢</span>gctu-announcements
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="peer-id-label">PEER ID</div>
+                <div id="my-peer-id" class="peer-id-value">web-xxxxxx</div>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-area">
+            <header class="chat-header glass-panel">
+                <div class="header-details">
+                    <h2 id="current-channel-title">#general</h2>
+                    <span id="channel-desc" class="channel-desc">GCTU general campus-wide offline chatroom.</span>
+                </div>
+                <div class="tab-buttons">
+                    <button id="show-chat-tab" class="tab-btn active">Chat</button>
+                    <button id="show-map-tab" class="tab-btn">Offline Map</button>
+                </div>
+            </header>
+
+            <!-- Chat Content Tab -->
+            <div id="chat-tab-content" class="tab-content active">
+                <div class="messages-container" id="messages-list">
+                    <!-- Sample messages to give it immediate visual feel (removed programmatically once loaded) -->
+                    <div class="message system-msg">
+                        <div class="msg-body">Welcome to the Campus Mesh! Your connection is decentralized and serverless.</div>
+                    </div>
+                </div>
+
+                <div class="input-bar glass-panel">
+                    <input type="text" id="message-input" placeholder="Type a message or /alert..." autocomplete="off">
+                    <button id="send-btn" class="send-btn">
+                        <svg viewBox="0 0 24 24" width="20" height="20">
+                            <path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Map Content Tab -->
+            <div id="map-tab-content" class="tab-content">
+                <div id="map"></div>
+                <div class="map-overlay-card glass-card">
+                    <h3>GCTU Offline Tracking</h3>
+                    <p>Live peer tracking across campuses utilizing local network triangulation and GNSS metadata.</p>
+                    <div class="map-stats">
+                        <span id="map-peer-count">0 peers active on map</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
