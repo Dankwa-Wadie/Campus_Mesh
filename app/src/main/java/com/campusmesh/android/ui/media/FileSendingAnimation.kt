@@ -25,10 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.campusmesh.android.R
 import kotlinx.coroutines.delay
@@ -77,11 +75,11 @@ fun FileSendingAnimation(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // File icon
+        // File icon - old-brand green replaced with the real GCTU primary blue (Phase 8 polish pass)
         Icon(
             imageVector = Icons.Filled.Description,
             contentDescription = stringResource(R.string.cd_file),
-            tint = Color(0xFF00C851), // Green like app theme
+            tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(32.dp)
         )
 
@@ -92,12 +90,16 @@ fun FileSendingAnimation(
             // Filename reveal animation (Matrix-style)
             Row(verticalAlignment = Alignment.Bottom) {
                 // Revealed part of filename
+                // Hardcoded white replaced with onSurface - this renders inside the new message
+                // bubble (MessageComponents.kt), whose background is primaryContainer/surfaceVariant
+                // in both themes, not the old terminal-black; white text would be low/no-contrast
+                // there (Phase 8 polish pass).
                 val revealedText = fileName.substring(0, animatedChars.toInt())
                 androidx.compose.material3.Text(
                     text = revealedText,
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        color = Color.White
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
+                        color = MaterialTheme.colorScheme.onSurface
                     ),
                     modifier = Modifier.padding(end = 2.dp)
                 )
@@ -107,8 +109,8 @@ fun FileSendingAnimation(
                     androidx.compose.material3.Text(
                         text = stringResource(R.string.underscore),
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            color = Color.White
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     )
                 }
@@ -124,34 +126,35 @@ fun FileSendingAnimation(
 }
 
 /**
- * ASCII-style progress bars for file transfer
+ * File transfer progress - a real Material progress bar with a percentage label, replacing the
+ * old ASCII "[####------] 60%" Matrix-green bracket string (Phase 8 polish pass). This is the
+ * component the design mockup's file-transfer bubble ("Lab_Assignment_Sem2... - 4.2 MB - Sending
+ * 60%") describes re-skinning - see docs/UI_REDESIGN_IMPLEMENTATION_PLAN.md §4.
  */
 @Composable
 private fun FileProgressBars(
     progress: Float,
     modifier: Modifier = Modifier
 ) {
-    val bars = 12
-    val filledBars = (progress * bars).toInt()
-
-    // Create a matrix-style progress bar string
-    val ctx = LocalContext.current
-    val progressString = buildString {
-        val brackets = ctx.getString(R.string.progress_bar_brackets, "", 0)
-        append("[")
-        for (i in 0 until bars) {
-            append(if (i < filledBars) ctx.getString(R.string.progress_filled) else ctx.getString(R.string.progress_empty))
-        }
-        append("] ")
-        append("${(progress * 100).toInt()}%")
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        androidx.compose.material3.LinearProgressIndicator(
+            progress = { progress.coerceIn(0f, 1f) },
+            modifier = Modifier
+                .weight(1f)
+                .height(5.dp),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+        androidx.compose.material3.Text(
+            text = "${(progress * 100).toInt()}%",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        )
     }
-
-    androidx.compose.material3.Text(
-        text = progressString,
-        style = MaterialTheme.typography.bodySmall.copy(
-            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-            color = Color(0xFF00FF7F) // Matrix green
-        ),
-        modifier = modifier
-    )
 }

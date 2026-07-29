@@ -122,9 +122,20 @@ class ChatViewModel(
     )
     val verifiedFingerprints = verificationHandler.verifiedFingerprints
 
+    // Chunked/resumable file transfer: splits large files above FileChunkProtocol.CHUNK_THRESHOLD
+    // into independently-resendable pieces instead of one big single-packet send, and asks a
+    // reconnected peer for only the chunks still missing instead of restarting the whole transfer.
+    // onIncomingMessage is wired below, once meshDelegateHandler exists (declaration order).
+    private val fileTransferManager = com.campusmesh.android.mesh.FileTransferManager(
+        context = application.applicationContext,
+        scope = viewModelScope,
+        getMeshService = { mesh },
+        getMyNickname = { state.getNicknameValue() }
+    )
+
     // Media file sending manager
-    private val mediaSendingManager = MediaSendingManager(state, messageManager, channelManager) { mesh }
-    
+    private val mediaSendingManager = MediaSendingManager(state, messageManager, channelManager, fileTransferManager) { mesh }
+
     // Delegate handler for mesh callbacks
     private val meshDelegateHandler = MeshDelegateHandler(
         state = state,
@@ -137,7 +148,14 @@ class ChatViewModel(
         getMyPeerID = { mesh.myPeerID },
         getMeshService = { mesh }
     )
-    
+
+    init {
+        // A completed chunked transfer should land in chat exactly like any other incoming
+        // message -- route it through the same delegate call MessageHandler's legacy single-packet
+        // path ultimately triggers, instead of duplicating channel/private routing logic here.
+        fileTransferManager.onIncomingMessage = { message -> meshDelegateHandler.didReceiveMessage(message) }
+    }
+
     // New Geohash architecture ViewModel (replaces God object service usage in UI path)
     val geohashViewModel = GeohashViewModel(
         application = application,
@@ -180,6 +198,9 @@ class ChatViewModel(
     val peerNicknames: StateFlow<Map<String, String>> = state.peerNicknames
     val peerRSSI: StateFlow<Map<String, Int>> = state.peerRSSI
     val peerDirect: StateFlow<Map<String, Boolean>> = state.peerDirect
+    val showChatList: StateFlow<Boolean> = state.showChatList
+    val showSettings: StateFlow<Boolean> = state.showSettings
+    val showMap: StateFlow<Boolean> = state.showMap
     val showAppInfo: StateFlow<Boolean> = state.showAppInfo
     val showMeshPeerList: StateFlow<Boolean> = state.showMeshPeerList
     val privateChatSheetPeer: StateFlow<String?> = state.privateChatSheetPeer
@@ -944,8 +965,22 @@ class ChatViewModel(
         meshDelegateHandler.didReceiveMessage(message)
     }
     
+    // Tracked independently of ChatState's own peer list so this doesn't depend on which of the
+    // (multiple) peer-list update paths in this class happens to be authoritative -- just needs to
+    // know, from one callback to the next, which peer IDs are newly present.
+    private var lastKnownConnectedPeers: Set<String> = emptySet()
+
     override fun didUpdatePeerList(peers: List<String>) {
         meshDelegateHandler.didUpdatePeerList(peers)
+
+        val current = peers.toSet()
+        val newlyConnected = current - lastKnownConnectedPeers
+        lastKnownConnectedPeers = current
+        if (newlyConnected.isNotEmpty()) {
+            newlyConnected.forEach { peerID ->
+                try { fileTransferManager.onPeerReachable(peerID) } catch (_: Exception) { }
+            }
+        }
     }
 
     override fun didReceiveChannelLeave(channel: String, fromPeer: String) {
@@ -1189,8 +1224,50 @@ class ChatViewModel(
      * Handle Android back navigation
      * Returns true if the back press was handled, false if it should be passed to the system
      */
+    // MARK: - Chat list <-> conversation detail navigation (redesign Phase 2)
+
+    /** Leave the chat list and show the conversation detail screen (ChatScreen). */
+    fun openConversation() {
+        state.setShowChatList(false)
+    }
+
+    /** Return from conversation detail back to the chat list (home screen). */
+    fun returnToChatList() {
+        state.setShowChatList(true)
+    }
+
+    /** Open the Settings & Profile screen (Phase 5), reachable from the chat list header. */
+    fun openSettings() {
+        state.setShowSettings(true)
+    }
+
+    /** Close Settings & Profile, returning to whatever was showing before (the chat list). */
+    fun closeSettings() {
+        state.setShowSettings(false)
+    }
+
+    /** Open the Map screen (Phase 6), reachable from the chat list header or the Channels sheet. */
+    fun openMap() {
+        state.setShowMap(true)
+    }
+
+    /** Close the Map screen, returning to whatever was showing before (the chat list). */
+    fun closeMap() {
+        state.setShowMap(false)
+    }
+
     fun handleBackPressed(): Boolean {
         return when {
+            // Close Settings & Profile / Map - checked first since either can be opened from the
+            // chat list header regardless of chat-list/conversation state.
+            state.getShowSettingsValue() -> {
+                closeSettings()
+                true
+            }
+            state.getShowMapValue() -> {
+                closeMap()
+                true
+            }
             // Close app info dialog
             state.getShowAppInfoValue() -> {
                 hideAppInfo()
@@ -1210,6 +1287,14 @@ class ChatViewModel(
             // Exit channel view
             state.getCurrentChannelValue() != null -> {
                 switchToChannel(null)
+                true
+            }
+            // Conversation detail is showing (chat list is the home screen now) - return to it.
+            // Deliberately checked last, after the existing exit-channel/exit-private-chat cases
+            // above so their within-conversation behavior is completely unchanged from before the
+            // redesign; this only fires once there's nothing left to close inside the conversation.
+            !state.getShowChatListValue() -> {
+                returnToChatList()
                 true
             }
             // No special navigation state - let system handle (usually exits app)

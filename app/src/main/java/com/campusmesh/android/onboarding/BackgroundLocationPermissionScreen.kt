@@ -99,7 +99,7 @@ fun BackgroundLocationPermissionScreen(
                             Text(
                                 text = stringResource(R.string.background_location_settings_tip),
                                 style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = FontFamily.Monospace
+                                    fontFamily = FontFamily.SansSerif
                                 ),
                                 color = colorScheme.onBackground.copy(alpha = 0.8f)
                             )
@@ -140,14 +140,14 @@ fun BackgroundLocationPermissionScreen(
                             Text(
                                 text = stringResource(R.string.background_location_needs_bullets),
                                 style = MaterialTheme.typography.bodySmall,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = FontFamily.SansSerif,
                                 color = colorScheme.onBackground.copy(alpha = 0.8f)
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = stringResource(R.string.background_location_privacy_note),
                                 style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = FontFamily.SansSerif,
                                     fontWeight = FontWeight.Medium
                                 ),
                                 color = colorScheme.onBackground
@@ -183,7 +183,7 @@ fun BackgroundLocationPermissionScreen(
                     Text(
                         text = stringResource(R.string.grant_background_location),
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.Bold
                         ),
                         modifier = Modifier.padding(vertical = 4.dp)
@@ -201,7 +201,7 @@ fun BackgroundLocationPermissionScreen(
                         Text(
                             text = stringResource(R.string.check_again),
                             style = MaterialTheme.typography.bodyMedium.copy(
-                                fontFamily = FontFamily.Monospace
+                                fontFamily = FontFamily.SansSerif
                             )
                         )
                     }
@@ -213,7 +213,7 @@ fun BackgroundLocationPermissionScreen(
                         Text(
                             text = stringResource(R.string.battery_optimization_skip),
                             style = MaterialTheme.typography.bodyMedium.copy(
-                                fontFamily = FontFamily.Monospace
+                                fontFamily = FontFamily.SansSerif
                             )
                         )
                     }
@@ -234,7 +234,7 @@ private fun HeaderSection(colorScheme: ColorScheme) {
         Text(
             text = stringResource(R.string.app_name),
             style = MaterialTheme.typography.headlineLarge.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold,
                 fontSize = 32.sp
             ),
@@ -244,7 +244,7 @@ private fun HeaderSection(colorScheme: ColorScheme) {
         Text(
             text = stringResource(R.string.background_location_required_subtitle),
             fontSize = 12.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = FontFamily.SansSerif,
             color = colorScheme.onBackground.copy(alpha = 0.7f)
         )
     }

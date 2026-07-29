@@ -267,7 +267,7 @@ private fun ChannelRow(
                 Text(
                     text = channel,
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FontFamily.SansSerif,
                         fontSize = BASE_FONT_SIZE.sp
                     ),
                     color = if (isSelected) colorScheme.primary else colorScheme.onSurface,
@@ -319,7 +319,7 @@ fun PeopleSection(
             Text(
                 text = stringResource(id = R.string.no_one_connected),
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     fontSize = 12.sp
                 ),
                 color = colorScheme.onSurface.copy(alpha = 0.5f),
@@ -663,7 +663,7 @@ private fun PeerItem(
                     Text(
                         text = baseName,
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = FontFamily.SansSerif,
                             fontSize = BASE_FONT_SIZE.sp,
                             fontWeight = if (isMe) FontWeight.Bold else FontWeight.Normal
                         ),
@@ -677,7 +677,7 @@ private fun PeerItem(
                         Text(
                             text = suffix,
                             style = MaterialTheme.typography.bodyMedium.copy(
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = FontFamily.SansSerif,
                                 fontSize = BASE_FONT_SIZE.sp
                             ),
                             color = baseColor.copy(alpha = 0.6f)
@@ -752,7 +752,7 @@ private fun UnreadBadge(
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = FontFamily.SansSerif
                 ),
                 color = Color.Black // Black text on yellow background
             )
@@ -996,7 +996,7 @@ fun PrivateChatSheet(
                             text = titleText,
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
+                                fontFamily = FontFamily.SansSerif
                             ),
                             color = if (isNostrPeer) Color(0xFFFF9500) else colorScheme.onSurface
                         )

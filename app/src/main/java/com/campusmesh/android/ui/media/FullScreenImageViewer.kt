@@ -101,7 +101,7 @@ fun FullScreenImageViewer(imagePaths: List<String>, initialIndex: Int = 0, onClo
                             text = stringResource(R.string.image_counter, (pagerState.currentPage ?: 0) + 1, imagePaths.size),
                             color = Color.White,
                             fontSize = 14.sp,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif
                         )
                     }
                 }

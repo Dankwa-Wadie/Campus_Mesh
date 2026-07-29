@@ -38,6 +38,9 @@ class CampusMeshApplication : Application() {
         // Initialize theme preference
         ThemePreferenceManager.init(this)
 
+        // Initialize avatar color preference (redesign Phase 5 - Settings & Profile screen)
+        try { com.campusmesh.android.ui.theme.AvatarPreferenceManager.init(this) } catch (_: Exception) { }
+
         // Initialize debug preference manager (persists debug toggles)
         try { com.campusmesh.android.ui.debug.DebugPreferenceManager.init(this) } catch (_: Exception) { }
 
@@ -55,6 +58,9 @@ class CampusMeshApplication : Application() {
 
         // Initialize mesh service preferences
         try { com.campusmesh.android.service.MeshServicePreferences.init(this) } catch (_: Exception) { }
+
+        // Hydrate Ghost Mode (map location broadcast suppression) from persisted preference
+        try { com.campusmesh.android.onboarding.GhostModePreferenceManager.hydrate(this) } catch (_: Exception) { }
 
         // Proactively start the foreground service to keep mesh alive
         try { com.campusmesh.android.service.MeshForegroundService.start(this) } catch (_: Exception) { }

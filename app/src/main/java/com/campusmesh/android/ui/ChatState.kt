@@ -119,6 +119,30 @@ class ChatState(
     // peerIDToPublicKeyFingerprint REMOVED - fingerprints now handled centrally in PeerManager
     
     // Navigation state
+
+    // Chat list <-> conversation detail ("pushed screen") navigation, added for the redesign
+    // (docs/UI_REDESIGN_IMPLEMENTATION_PLAN.md Phase 2). Deliberately a standalone flag rather
+    // than derived from currentChannel/selectedPrivateChatPeer/selectedLocationChannel: those three
+    // have different null/default conventions (selectedLocationChannel defaults to Mesh, never
+    // null) so inferring "is a conversation open" from them would be fragile without a compiler
+    // to catch mistakes. true = showing the chat list (home screen); false = showing conversation
+    // detail (the existing ChatScreen, which still reads its content from those three fields
+    // exactly as before - this flag only controls which top-level screen is visible).
+    private val _showChatList = MutableStateFlow(true)
+    val showChatList: StateFlow<Boolean> = _showChatList.asStateFlow()
+
+    // Settings & Profile screen (redesign Phase 5) - same orthogonal-flag pattern as
+    // showChatList above, checked with higher priority in MainActivity so it can be reached from
+    // (and returns to) the chat list without disturbing the chat-list/conversation flag.
+    private val _showSettings = MutableStateFlow(false)
+    val showSettings: StateFlow<Boolean> = _showSettings.asStateFlow()
+
+    // Map screen (redesign Phase 6) - same orthogonal-flag pattern, checked with higher priority
+    // than showChatList in MainActivity (same tier as showSettings; the two are mutually
+    // exclusive in practice since each open*() call only flips its own flag on).
+    private val _showMap = MutableStateFlow(false)
+    val showMap: StateFlow<Boolean> = _showMap.asStateFlow()
+
     private val _showAppInfo = MutableStateFlow<Boolean>(false)
     val showAppInfo: StateFlow<Boolean> = _showAppInfo.asStateFlow()
 
@@ -196,6 +220,9 @@ class ChatState(
 
     fun getShowMeshPeerListValue() = _showMeshPeerList.value
     fun getPrivateChatSheetPeerValue() = _privateChatSheetPeer.value
+    fun getShowChatListValue() = _showChatList.value
+    fun getShowSettingsValue() = _showSettings.value
+    fun getShowMapValue() = _showMap.value
 
     fun getTeleportedGeoValue() = _teleportedGeo.value
     fun getGeohashParticipantCountsValue() = _geohashParticipantCounts.value
@@ -360,5 +387,17 @@ class ChatState(
 
     fun setPrivateChatSheetPeer(peerID: String?) {
         _privateChatSheetPeer.value = peerID
+    }
+
+    fun setShowChatList(show: Boolean) {
+        _showChatList.value = show
+    }
+
+    fun setShowSettings(show: Boolean) {
+        _showSettings.value = show
+    }
+
+    fun setShowMap(show: Boolean) {
+        _showMap.value = show
     }
 }

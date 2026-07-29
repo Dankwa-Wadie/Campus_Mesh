@@ -220,6 +220,13 @@ object KtorGatewayManager : TransportBridgeService.TransportLayer {
                         session.send(Frame.Text(gson.toJson(response)))
                     }
                 }
+                "ghost_mode" -> {
+                    val peerID = data["peerID"] as? String ?: webSessions[session] ?: return
+                    val enabled = data["enabled"] as? Boolean ?: false
+                    Log.i(TAG, "👻 Web peer $peerID set Ghost Mode = $enabled (map broadcast suppression)")
+                    // Real peer-location mesh broadcast doesn't exist yet (see AppUpdateNotice-style
+                    // packet work needed for that); this just records intent so it's ready once it does.
+                }
                 "chat_msg" -> {
                     val peerID = webSessions[session] ?: return
                     val content = data["content"] as? String ?: ""

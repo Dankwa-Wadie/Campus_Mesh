@@ -72,18 +72,19 @@ private fun BluetoothDisabledContent(
         verticalArrangement = Arrangement.spacedBy(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Bluetooth icon - using Bluetooth outlined icon in app's green color
+        // Bluetooth icon - leftover old-brand green replaced with the real GCTU primary blue
+        // (docs/UI_REDESIGN_IMPLEMENTATION_PLAN.md Phase 7 spot-fix pass)
         Icon(
             imageVector = Icons.Outlined.Bluetooth,
             contentDescription = stringResource(R.string.cd_bluetooth),
             modifier = Modifier.size(64.dp),
-            tint = Color(0xFF00C851) // App's main green color
+            tint = colorScheme.primary
         )
 
         Text(
             text = stringResource(R.string.bluetooth_recommended),
             style = MaterialTheme.typography.headlineSmall.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold,
                 color = colorScheme.primary
             ),
@@ -114,7 +115,7 @@ private fun BluetoothDisabledContent(
                     Text(
                         text = stringResource(R.string.bluetooth_needs_bullets),
                     style = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FontFamily.SansSerif,
                         color = colorScheme.onSurface.copy(alpha = 0.8f)
                     )
                 )
@@ -132,13 +133,13 @@ private fun BluetoothDisabledContent(
                     onClick = onEnableBluetooth,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF00C851) // App's main green color
+                        containerColor = colorScheme.primary // old-brand green -> GCTU primary blue
                     )
                 ) {
                         Text(
                             text = stringResource(R.string.enable_bluetooth),
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.Bold
                         ),
                         modifier = Modifier.padding(vertical = 4.dp)
@@ -187,7 +188,7 @@ private fun BluetoothNotSupportedContent(
         Text(
             text = stringResource(R.string.bluetooth_not_supported),
             style = MaterialTheme.typography.headlineSmall.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold,
                 color = colorScheme.error
             ),
@@ -204,7 +205,7 @@ private fun BluetoothNotSupportedContent(
             Text(
                 text = stringResource(R.string.bluetooth_unsupported_explanation),
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     color = colorScheme.onSurface
                 ),
                 modifier = Modifier.padding(16.dp),
@@ -235,7 +236,7 @@ private fun BluetoothCheckingContent(
         Text(
             text = stringResource(R.string.app_name),
             style = MaterialTheme.typography.headlineLarge.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold,
                 color = colorScheme.primary
             ),
@@ -247,7 +248,7 @@ private fun BluetoothCheckingContent(
         Text(
             text = stringResource(R.string.checking_bluetooth_status),
             style = MaterialTheme.typography.bodyLarge.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 color = colorScheme.onSurface.copy(alpha = 0.7f)
             )
         )

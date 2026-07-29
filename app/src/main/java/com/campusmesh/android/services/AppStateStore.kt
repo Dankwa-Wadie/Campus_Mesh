@@ -1,5 +1,6 @@
 package com.campusmesh.android.services
 
+import com.campusmesh.android.data.AppMode
 import com.campusmesh.android.model.BitchatMessage
 import com.campusmesh.android.model.DeliveryStatus
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,6 +12,28 @@ import kotlinx.coroutines.flow.asStateFlow
  * The foreground Mesh service updates this store; UI subscribes/hydrates from it.
  */
 object AppStateStore {
+    // Current campus/off-campus mode. Defaults to GENERAL_MESH until either the setup wizard
+    // selects one manually or LocationChannelManager's soft-geofence check detects a campus.
+    private val _currentAppMode = MutableStateFlow(AppMode.GENERAL_MESH)
+    val currentAppMode: StateFlow<AppMode> = _currentAppMode.asStateFlow()
+
+    // True if the user has enabled Ghost Mode: this device's position is never broadcast to
+    // peers and never rendered as a marker on anyone's map, including our own gateway session.
+    private val _isGhostMode = MutableStateFlow(false)
+    val isGhostMode: StateFlow<Boolean> = _isGhostMode.asStateFlow()
+
+    fun setAppMode(mode: AppMode) {
+        synchronized(this) {
+            _currentAppMode.value = mode
+        }
+    }
+
+    fun setGhostMode(enabled: Boolean) {
+        synchronized(this) {
+            _isGhostMode.value = enabled
+        }
+    }
+
     // Global de-dup set by message id to avoid duplicate keys in Compose lists
     private val seenMessageIds = mutableSetOf<String>()
     private val seenPublicMessageKeys = mutableSetOf<String>()

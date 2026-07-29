@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +16,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.PinDrop
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,6 +38,9 @@ import com.campusmesh.android.geohash.LocationChannelManager
 import com.campusmesh.android.geohash.GeohashBookmarksStore
 import com.campusmesh.android.ui.theme.BASE_FONT_SIZE
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.campusmesh.android.R
 import com.campusmesh.android.core.ui.component.sheet.BitchatBottomSheet
@@ -52,7 +57,8 @@ fun LocationChannelsSheet(
     isPresented: Boolean,
     onDismiss: () -> Unit,
     viewModel: ChatViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenMap: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val locationManager = LocationChannelManager.getInstance(context)
@@ -73,6 +79,13 @@ fun LocationChannelsSheet(
 
     // Observe reactive participant counts
     val geohashParticipantCounts by viewModel.geohashParticipantCounts.collectAsStateWithLifecycle()
+
+    // Currently active IRC-style channel (used to highlight selected campus sub-channels)
+    val currentIrcChannel by viewModel.currentChannel.collectAsStateWithLifecycle()
+
+    // Ghost Mode's toggle lives on the Map screen now, not here (redesign Phase 6 - see
+    // docs/UI_REDESIGN_IMPLEMENTATION_PLAN.md §3.7): this sheet links to the map instead via the
+    // "View on map" row below, since that's the one place its on/off effect is actually visible.
 
     // UI state
     var customGeohash by remember { mutableStateOf("") }
@@ -132,7 +145,7 @@ fun LocationChannelsSheet(
                         Text(
                             text = stringResource(R.string.location_channels_desc),
                             fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = FontFamily.SansSerif,
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                             modifier = Modifier
                                 .padding(horizontal = 24.dp)
@@ -155,7 +168,7 @@ fun LocationChannelsSheet(
                                             Text(
                                                 text = stringResource(R.string.location_permission_denied),
                                                 fontSize = 11.sp,
-                                                fontFamily = FontFamily.Monospace,
+                                                fontFamily = FontFamily.SansSerif,
                                                 color = Color.Red.copy(alpha = 0.8f)
                                             )
                                             TextButton(
@@ -169,7 +182,7 @@ fun LocationChannelsSheet(
                                                 Text(
                                                     text = stringResource(R.string.open_settings),
                                                     fontSize = 11.sp,
-                                                    fontFamily = FontFamily.Monospace
+                                                    fontFamily = FontFamily.SansSerif
                                                 )
                                             }
                                         }
@@ -178,7 +191,7 @@ fun LocationChannelsSheet(
                                         Text(
                                             text = stringResource(R.string.location_permission_granted),
                                             fontSize = 11.sp,
-                                            fontFamily = FontFamily.Monospace,
+                                            fontFamily = FontFamily.SansSerif,
                                             color = standardGreen
                                         )
                                     }
@@ -201,6 +214,97 @@ fun LocationChannelsSheet(
                                 onDismiss()
                             }
                         )
+                    }
+
+                    // Pinned Campus Channels — always shown, independent of GPS/bookmark state.
+                    // Main Campus is a real geohash location channel (not a separate "mode"), so
+                    // it reuses the exact same selection mechanism as any other geohash row below.
+                    item(key = "campus_header") {
+                        Text(
+                            text = "Campus Channels",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontFamily = FontFamily.SansSerif,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp)
+                                .padding(top = 4.dp, bottom = 4.dp)
+                        )
+                    }
+                    item(key = "campus_main") {
+                        val participantCount = geohashParticipantCounts[com.campusmesh.android.geohash.MainCampusGeohash.PRIMARY] ?: 0
+                        ChannelRow(
+                            title = "🏫 " + com.campusmesh.android.geohash.MainCampusGeohash.DISPLAY_NAME,
+                            subtitle = "#${com.campusmesh.android.geohash.MainCampusGeohash.PRIMARY} • pinned",
+                            isSelected = isChannelSelected(com.campusmesh.android.geohash.MainCampusGeohash.CHANNEL, selectedChannel),
+                            titleColor = standardGreen,
+                            titleBold = participantCount > 0,
+                            trailingContent = null,
+                            onClick = {
+                                locationManager.setTeleported(false)
+                                locationManager.select(ChannelID.Location(com.campusmesh.android.geohash.MainCampusGeohash.CHANNEL))
+                                onDismiss()
+                            }
+                        )
+                    }
+                    items(com.campusmesh.android.geohash.MainCampusGeohash.SUB_CHANNELS, key = { "campus_sub_${it.first}" }) { (channelName, emoji) ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(start = 20.dp)) {
+                            ChannelRow(
+                                title = "$emoji $channelName",
+                                subtitle = "Main Campus channel",
+                                isSelected = currentIrcChannel == channelName,
+                                titleColor = null,
+                                titleBold = false,
+                                trailingContent = null,
+                                onClick = {
+                                    viewModel.joinChannel(channelName)
+                                    onDismiss()
+                                }
+                            )
+                        }
+                    }
+                    if (onOpenMap != null) {
+                        item(key = "view_on_map") {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .padding(14.dp)
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            onDismiss()
+                                            onOpenMap()
+                                        },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Map,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            "View on map",
+                                            fontFamily = FontFamily.SansSerif,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Text(
+                                            "See who's nearby, and Ghost Mode.",
+                                            fontFamily = FontFamily.SansSerif,
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Nearby options (only show if location services are enabled)
@@ -257,7 +361,7 @@ fun LocationChannelsSheet(
                                 Text(
                                     text = stringResource(R.string.finding_nearby_channels),
                                     fontSize = 12.sp,
-                                    fontFamily = FontFamily.Monospace
+                                    fontFamily = FontFamily.SansSerif
                                 )
                             }
                         }
@@ -269,7 +373,7 @@ fun LocationChannelsSheet(
                             Text(
                                 text = stringResource(R.string.bookmarked),
                                 style = MaterialTheme.typography.labelLarge,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = FontFamily.SansSerif,
                                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -337,7 +441,7 @@ fun LocationChannelsSheet(
                                 Text(
                                     text = stringResource(R.string.hash_symbol),
                                     fontSize = BASE_FONT_SIZE.sp,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = FontFamily.SansSerif,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                 )
 
@@ -357,7 +461,7 @@ fun LocationChannelsSheet(
                                     },
                                     textStyle = androidx.compose.ui.text.TextStyle(
                                         fontSize = BASE_FONT_SIZE.sp,
-                                        fontFamily = FontFamily.Monospace,
+                                        fontFamily = FontFamily.SansSerif,
                                         color = MaterialTheme.colorScheme.onSurface
                                     ),
                                     modifier = Modifier
@@ -380,7 +484,7 @@ fun LocationChannelsSheet(
                                             Text(
                                                 text = stringResource(R.string.geohash_placeholder),
                                                 fontSize = BASE_FONT_SIZE.sp,
-                                                fontFamily = FontFamily.Monospace,
+                                                fontFamily = FontFamily.SansSerif,
                                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                                             )
                                         }
@@ -438,7 +542,7 @@ fun LocationChannelsSheet(
                                         Text(
                                             text = stringResource(R.string.teleport),
                                             fontSize = BASE_FONT_SIZE.sp,
-                                            fontFamily = FontFamily.Monospace
+                                            fontFamily = FontFamily.SansSerif
                                         )
                                         Icon(
                                             imageVector = Icons.Filled.PinDrop,
@@ -458,7 +562,7 @@ fun LocationChannelsSheet(
                             Text(
                                 text = customError!!,
                                 fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = FontFamily.SansSerif,
                                 color = Color.Red,
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -500,7 +604,7 @@ fun LocationChannelsSheet(
                                 Text(
                                     text = if (locationServicesEnabled) stringResource(R.string.disable_location_services) else stringResource(R.string.enable_location_services),
                                     fontSize = 12.sp,
-                                    fontFamily = FontFamily.Monospace
+                                    fontFamily = FontFamily.SansSerif
                                 )
                             }
                         }
@@ -518,6 +622,32 @@ fun LocationChannelsSheet(
                     }
                 )
             }
+        }
+    }
+
+    // Re-check the real OS permission every time the sheet opens. The manager is a long-lived
+    // singleton that otherwise only checks permission once at construction, so if the user grants
+    // location from system Settings after that, this sheet would keep showing the stale "denied"
+    // message forever without this.
+    LaunchedEffect(isPresented) {
+        if (isPresented) {
+            locationManager.refreshPermissionState()
+        }
+    }
+
+    // Also re-check on ON_RESUME: the "Open Settings" button below launches the system Settings
+    // screen without dismissing this sheet, so isPresented never toggles when the user comes back
+    // having granted permission -- only a resume event catches that return trip.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(isPresented, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (isPresented && event == Lifecycle.Event.ON_RESUME) {
+                locationManager.refreshPermissionState()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -592,7 +722,7 @@ private fun ChannelRow(
                     Text(
                         text = baseTitle,
                         fontSize = BASE_FONT_SIZE.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FontFamily.SansSerif,
                         fontWeight = if (titleBold) FontWeight.Bold else FontWeight.Normal,
                         color = titleColor ?: MaterialTheme.colorScheme.onSurface
                     )
@@ -601,7 +731,7 @@ private fun ChannelRow(
                         Text(
                             text = count,
                             fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = FontFamily.SansSerif,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
@@ -610,7 +740,7 @@ private fun ChannelRow(
                 Text(
                     text = subtitle,
                     fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
             }

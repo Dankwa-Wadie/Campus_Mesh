@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html, body, #map { height: 100%; margin: 0; padding: 0; background: #ffffff; }
+      .leaflet-container { background: #ffffff; }
+      .cm-marker { background: transparent; border: none; }
+      .cm-avatar {
+        width: 34px; height: 34px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        color: #ffffff; font-weight: 700; font-size: 12px;
+        font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+        border: 2px solid #ffffff;
+      }
+      .cm-avatar.self { border-color: #D8A73D; width: 40px; height: 40px; font-size: 13px; }
+      .cm-label {
+        margin-top: 2px; text-align: center; font-size: 10px; font-weight: 700;
+        font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif;
+        color: #333333; text-shadow: 0 0 2px #ffffff, 0 0 2px #ffffff, 0 0 2px #ffffff;
+      }
+      .dark .cm-label { color: #eeeeee; text-shadow: 0 0 2px #000000, 0 0 2px #000000, 0 0 2px #000000; }
+    </style>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      // Campus Map - real OpenStreetMap tiles (via Carto's basemap service, same tile provider
+      // already used by geohash_picker.html in this app), showing "You" plus everyone currently
+      // reachable (mesh peers + Main Campus geohash participants). There is no real per-peer GPS
+      // broadcast anywhere in this app (a deliberate privacy choice - see
+      // GhostModePreferenceManager's docs), so peer markers are placed at a small deterministic
+      // offset from the campus center, not their actual position - this is "who's around campus
+      // right now," not a precise live tracker.
+      const map = L.map("map", { zoomControl: true, minZoom: 14, maxZoom: 19 }).setView([0, 0], 17);
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors &copy; Carto"
+      }).addTo(map);
+
+      let selfMarker = null;
+      let peopleLayer = L.layerGroup().addTo(map);
+
+      function avatarIcon(initials, color, isSelf) {
+        const cls = isSelf ? "cm-avatar self" : "cm-avatar";
+        const html =
+          '<div>' +
+          '<div class="' + cls + '" style="background:' + color + '">' + initials + '</div>' +
+          '</div>';
+        return L.divIcon({
+          className: "cm-marker",
+          html: html,
+          iconSize: isSelf ? [40, 40] : [34, 34],
+          iconAnchor: isSelf ? [20, 20] : [17, 17]
+        });
+      }
+
+      function focusCampus(lat, lng, zoom) {
+        map.setView([lat, lng], zoom || 17);
+      }
+
+      function setSelf(lat, lng, visible, initials, color) {
+        if (selfMarker) { map.removeLayer(selfMarker); selfMarker = null; }
+        if (!visible) return;
+        selfMarker = L.marker([lat, lng], { icon: avatarIcon(initials, color, true), zIndexOffset: 1000 }).addTo(map);
+      }
+
+      // peopleJson: JSON array of {id, initials, color, lat, lng}
+      function setPeople(peopleJson) {
+        peopleLayer.clearLayers();
+        let people;
+        try { people = JSON.parse(peopleJson); } catch (e) { people = []; }
+        people.forEach(function (p) {
+          const marker = L.marker([p.lat, p.lng], { icon: avatarIcon(p.initials, p.color, false) });
+          marker.on("click", function () {
+            if (window.Android && window.Android.onMarkerTapped) {
+              window.Android.onMarkerTapped(p.id);
+            }
+          });
+          peopleLayer.addLayer(marker);
+        });
+      }
+
+      function setMapTheme(theme) {
+        document.body.className = theme;
+      }
+
+      window.focusCampus = focusCampus;
+      window.setSelf = setSelf;
+      window.setPeople = setPeople;
+      window.setMapTheme = setMapTheme;
+
+      function cleanup() {
+        try { map.off(); } catch (_) {}
+        try { peopleLayer.clearLayers(); } catch (_) {}
+        try { map.remove(); } catch (_) {}
+      }
+      window.cleanup = cleanup;
+    </script>
+  </body>
+</html>

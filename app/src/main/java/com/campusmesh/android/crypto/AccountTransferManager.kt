@@ -18,7 +18,9 @@ class AccountTransferManager(private val context: Context) {
         private const val ALGORITHM = "AES/GCM/NoPadding"
         private const val TAG_LENGTH_BIT = 128
         private const val IV_LENGTH_BYTE = 12
-        private const val KEY_LENGTH_BYTE = 16 // AES-128
+        private const val KEY_LENGTH_BYTE = 32 // AES-256 (Web Crypto infers key size from raw key
+                                                // byte length on the migrate.html decrypt side, so
+                                                // no JS change is needed for this bump)
     }
 
     private val encryptionService = EncryptionService(context)

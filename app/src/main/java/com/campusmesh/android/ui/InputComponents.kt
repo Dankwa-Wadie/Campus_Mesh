@@ -1,5 +1,4 @@
 package com.campusmesh.android.ui
-// [Goose] TODO: Replace inline file attachment stub with FilePickerButton abstraction that dispatches via FileShareDispatcher
 
 
 import androidx.compose.foundation.*
@@ -53,7 +52,15 @@ import com.campusmesh.android.ui.media.FilePickerButton
  * VisualTransformation that styles slash commands with background and color
  * while preserving cursor positioning and click handling
  */
-class SlashCommandVisualTransformation : VisualTransformation {
+class SlashCommandVisualTransformation(
+    // Old-brand bright-green-on-dark-gray replaced with theme-driven colors, passed in from the
+    // composable's MaterialTheme.colorScheme rather than hardcoded here (VisualTransformation.filter
+    // isn't a @Composable context, so it can't read MaterialTheme itself). The command bar/
+    // autocomplete UI itself was removed per the redesign plan (§6) - this is just the inline
+    // highlight for the undocumented "/command" shortcut typists may still use.
+    private val highlightColor: Color = Color(0xFF3E7BEA),
+    private val highlightBackground: Color = Color(0x223E7BEA)
+) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val slashCommandRegex = Regex("(/\\w+)(?=\\s|$)")
         val annotatedString = buildAnnotatedString {
@@ -68,10 +75,10 @@ class SlashCommandVisualTransformation : VisualTransformation {
                 // Add the styled slash command
                 withStyle(
                     style = SpanStyle(
-                        color = Color(0xFF00FF7F), // Bright green
-                        fontFamily = FontFamily.Monospace,
+                        color = highlightColor,
+                        fontFamily = FontFamily.SansSerif,
                         fontWeight = FontWeight.Medium,
-                        background = Color(0xFF2D2D2D) // Dark gray background
+                        background = highlightBackground
                     )
                 ) {
                     append(match.value)
@@ -113,7 +120,7 @@ class MentionVisualTransformation : VisualTransformation {
                 withStyle(
                     style = SpanStyle(
                         color = Color(0xFFFF9500), // Orange
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FontFamily.SansSerif,
                         fontWeight = FontWeight.SemiBold
                     )
                 ) {
@@ -189,7 +196,13 @@ fun MessageInput(
     ) {
         // Text input with placeholder OR visualizer when recording
         Box(
-            modifier = Modifier.weight(1f)
+            modifier = Modifier
+                .weight(1f)
+                .background(
+                    colorScheme.surfaceVariant,
+                    androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
+                )
+                .padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
             // Always keep the text field mounted to retain focus and avoid IME collapse
             BasicTextField(
@@ -197,7 +210,7 @@ fun MessageInput(
                 onValueChange = onValueChange,
                 textStyle = MaterialTheme.typography.bodyMedium.copy(
                     color = colorScheme.primary,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = FontFamily.SansSerif
                 ),
                 cursorBrush = SolidColor(if (isRecording) Color.Transparent else colorScheme.primary),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -205,7 +218,13 @@ fun MessageInput(
                     if (hasText) onSend() // Only send if there's text
                 }),
                 visualTransformation = CombinedVisualTransformation(
-                    listOf(SlashCommandVisualTransformation(), MentionVisualTransformation())
+                    listOf(
+                        SlashCommandVisualTransformation(
+                            highlightColor = colorScheme.primary,
+                            highlightBackground = colorScheme.primary.copy(alpha = 0.13f)
+                        ),
+                        MentionVisualTransformation()
+                    )
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -220,7 +239,7 @@ fun MessageInput(
                 Text(
                     text = stringResource(R.string.type_a_message_placeholder),
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = FontFamily.SansSerif
                     ),
                     color = colorScheme.onSurface.copy(alpha = 0.5f), // Muted grey
                     modifier = Modifier.fillMaxWidth()
@@ -232,7 +251,9 @@ fun MessageInput(
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     RealtimeScrollingWaveform(
                         modifier = Modifier.weight(1f).height(32.dp),
-                        amplitudeNorm = normalizeAmplitudeSample(amplitude)
+                        amplitudeNorm = normalizeAmplitudeSample(amplitude),
+                        // Old-brand green default replaced with the real GCTU primary blue (Phase 8 polish pass)
+                        barColor = colorScheme.primary
                     )
                     Spacer(Modifier.width(20.dp))
                     val secs = (elapsedMs / 1000).toInt()
@@ -243,7 +264,7 @@ fun MessageInput(
                     val maxSs = maxSecs % 60
                     Text(
                         text = String.format("%02d:%02d / %02d:%02d", mm, ss, maxMm, maxSs),
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FontFamily.SansSerif,
                         color = colorScheme.primary,
                         fontSize = (BASE_FONT_SIZE - 4).sp
                     )
@@ -256,7 +277,11 @@ fun MessageInput(
         // Voice and image buttons when no text (only visible in Mesh chat)
         if (value.text.isEmpty() && showMediaButtons) {
             // Hold-to-record microphone
-            val bg = if (colorScheme.background == Color.Black) Color(0xFF00FF00).copy(alpha = 0.75f) else Color(0xFF008000).copy(alpha = 0.75f)
+            // Was: a hardcoded green pair gated on `colorScheme.background == Color.Black`, a proxy
+            // for dark mode that broke once Theme.kt's dark background stopped being pure black
+            // (redesign Phase 1) - always evaluated false afterward, silently locking this to the
+            // "light" branch. colorScheme.primary is already correct per-theme, no branch needed.
+            val bg = colorScheme.primary.copy(alpha = 0.75f)
 
             // Ensure latest values are used when finishing recording
             val latestSelectedPeer = rememberUpdatedState(selectedPrivatePeer)
@@ -267,12 +292,11 @@ fun MessageInput(
             if (!isRecording) {
                 // Revert to original separate buttons: round File button (left) and the old Image plus button (right)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    // DISABLE FILE PICKER
-                    //FilePickerButton(
-                    //    onFileReady = { path ->
-                    //        onSendFileNote(latestSelectedPeer.value, latestChannel.value, path)
-                    //    }
-                    //)
+                    FilePickerButton(
+                        onFileReady = { path ->
+                            onSendFileNote(latestSelectedPeer.value, latestChannel.value, path)
+                        }
+                    )
                     ImagePickerButton(
                         onImageReady = { outPath ->
                             onSendImageNote(latestSelectedPeer.value, latestChannel.value, outPath)
@@ -332,10 +356,9 @@ fun MessageInput(
                             } else if (selectedPrivatePeer != null || currentChannel != null) {
                                 // Orange for both private messages and channels when enabled
                                 Color(0xFFFF9500).copy(alpha = 0.75f)
-                            } else if (colorScheme.background == Color.Black) {
-                                Color(0xFF00FF00).copy(alpha = 0.75f) // Bright green for dark theme
                             } else {
-                                Color(0xFF008000).copy(alpha = 0.75f) // Dark green for light theme
+                                // General mesh timeline - same stale-dark-mode-check fix as above
+                                colorScheme.primary.copy(alpha = 0.75f)
                             },
                             shape = CircleShape
                         ),
@@ -351,10 +374,9 @@ fun MessageInput(
                         } else if (selectedPrivatePeer != null || currentChannel != null) {
                             // Black arrow on orange for both private and channel modes
                             Color.Black
-                        } else if (colorScheme.background == Color.Black) {
-                            Color.Black // Black arrow on bright green in dark theme
                         } else {
-                            Color.White // White arrow on dark green in light theme
+                            // General mesh timeline - onPrimary is already correct per-theme
+                            colorScheme.onPrimary
                         }
                     )
                 }
@@ -415,7 +437,7 @@ fun CommandSuggestionItem(
         Text(
             text = allCommands.joinToString(", "),
             style = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Medium
             ),
             color = colorScheme.primary,
@@ -427,7 +449,7 @@ fun CommandSuggestionItem(
             Text(
                 text = syntax,
                 style = MaterialTheme.typography.bodySmall.copy(
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = FontFamily.SansSerif
                 ),
                 color = colorScheme.onSurface.copy(alpha = 0.8f),
                 fontSize = (BASE_FONT_SIZE - 5).sp
@@ -438,7 +460,7 @@ fun CommandSuggestionItem(
         Text(
             text = suggestion.description,
             style = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.SansSerif
             ),
             color = colorScheme.onSurface.copy(alpha = 0.7f),
             fontSize = (BASE_FONT_SIZE - 5).sp,
@@ -489,7 +511,7 @@ fun MentionSuggestionItem(
         Text(
             text = stringResource(R.string.mention_suggestion_at, suggestion),
             style = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.SemiBold
             ),
             color = Color(0xFFFF9500), // Orange like mentions
@@ -501,7 +523,7 @@ fun MentionSuggestionItem(
         Text(
             text = stringResource(R.string.mention),
             style = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.SansSerif
             ),
             color = colorScheme.onSurface.copy(alpha = 0.7f),
             fontSize = (BASE_FONT_SIZE - 5).sp

@@ -146,52 +146,82 @@ fun MessageItem(
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val timeFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
-    
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Start,
-                verticalAlignment = Alignment.Top
-            ) {
-                // Provide a small end padding for own private messages so overlay doesn't cover text
-                val endPad = if (message.isPrivate && message.sender == currentUserNickname) 16.dp else 0.dp
-                // Create a custom layout that combines selectable text with clickable nickname areas
-                MessageTextWithClickableNicknames(
-                    message = message,
-                    messages = messages,
-                    currentUserNickname = currentUserNickname,
-                    meshService = meshService,
-                    colorScheme = colorScheme,
-                    timeFormatter = timeFormatter,
-                    onNicknameClick = onNicknameClick,
-                    onMessageLongPress = onMessageLongPress,
-                    onCancelTransfer = onCancelTransfer,
-                    onImageClick = onImageClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = endPad)
-                )
-            }
 
-            // Delivery status for private messages (overlay, non-displacing)
-            if (message.isPrivate && message.sender == currentUserNickname) {
-                message.deliveryStatus?.let { status ->
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = 2.dp)
+    // Bubble container (redesign Phase 3) - own messages right-aligned with a primaryContainer
+    // tint, everyone else's left-aligned with a surfaceVariant tint, matching
+    // campus_mesh_design_mockups.html. Deliberately only wraps the existing content in a colored,
+    // rounded, aligned Box rather than touching anything inside it: the inline nickname-coloring,
+    // clickable-nickname, mention-highlighting, and link logic in
+    // MessageTextWithClickableNicknames all keep working exactly as before. primaryContainer/
+    // surfaceVariant were chosen in Theme.kt specifically to stay legible with the existing
+    // onSurface-based text color in both bubble states and both themes, so no inner color changes
+    // were needed either.
+    val isOwnMessage = message.sender == currentUserNickname
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (isOwnMessage) Arrangement.End else Arrangement.Start
+    ) {
+        Box(
+            modifier = Modifier
+                .widthIn(max = 280.dp)
+                .background(
+                    color = if (isOwnMessage) colorScheme.primaryContainer else colorScheme.surfaceVariant,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(
+                        topStart = 14.dp,
+                        topEnd = 14.dp,
+                        bottomStart = if (isOwnMessage) 14.dp else 4.dp,
+                        bottomEnd = if (isOwnMessage) 4.dp else 14.dp
+                    )
+                )
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Start,
+                        verticalAlignment = Alignment.Top
                     ) {
-                        DeliveryStatusIcon(status = status)
+                        // Provide a small end padding for own private messages so overlay doesn't cover text
+                        val endPad = if (message.isPrivate && message.sender == currentUserNickname) 16.dp else 0.dp
+                        // Create a custom layout that combines selectable text with clickable nickname areas
+                        MessageTextWithClickableNicknames(
+                            message = message,
+                            messages = messages,
+                            currentUserNickname = currentUserNickname,
+                            meshService = meshService,
+                            colorScheme = colorScheme,
+                            timeFormatter = timeFormatter,
+                            onNicknameClick = onNicknameClick,
+                            onMessageLongPress = onMessageLongPress,
+                            onCancelTransfer = onCancelTransfer,
+                            onImageClick = onImageClick,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = endPad)
+                        )
+                    }
+
+                    // Delivery status for private messages (overlay, non-displacing)
+                    if (message.isPrivate && message.sender == currentUserNickname) {
+                        message.deliveryStatus?.let { status ->
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(top = 2.dp)
+                            ) {
+                                DeliveryStatusIcon(status = status)
+                            }
+                        }
                     }
                 }
+
+                // Link previews removed; links are now highlighted inline and clickable within the message text
             }
         }
-        
-        // Link previews removed; links are now highlighted inline and clickable within the message text
     }
 }
 
@@ -269,7 +299,7 @@ fun MessageItem(
             var headerLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
             Text(
                 text = headerText,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 color = colorScheme.onSurface,
                 modifier = Modifier.pointerInput(message.id) {
                     detectTapGestures(onTap = { pos ->
@@ -338,7 +368,7 @@ fun MessageItem(
                             }
                         }
                     } else {
-                        Text(text = stringResource(R.string.file_unavailable), fontFamily = FontFamily.Monospace, color = Color.Gray)
+                        Text(text = stringResource(R.string.file_unavailable), fontFamily = FontFamily.SansSerif, color = Color.Gray)
                     }
                 }
             }
@@ -453,7 +483,7 @@ fun MessageItem(
                     }
                 )
             },
-            fontFamily = FontFamily.Monospace,
+            fontFamily = FontFamily.SansSerif,
             softWrap = true,
             overflow = TextOverflow.Visible,
             style = androidx.compose.ui.text.TextStyle(

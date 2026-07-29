@@ -179,7 +179,7 @@ class GeohashPickerActivity : OrientationAwareActivity() {
                                 text = stringResource(R.string.pan_zoom_instruction),
                                 fontSize = 12.sp,
                                 textAlign = TextAlign.Center,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = FontFamily.SansSerif,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier
                                     .padding(horizontal = 14.dp, vertical = 10.dp)
@@ -204,7 +204,7 @@ class GeohashPickerActivity : OrientationAwareActivity() {
                                 Text(
                                     text = if (currentGeohash.isNotEmpty()) "#${currentGeohash}" else "select location",
                                     fontSize = BASE_FONT_SIZE.sp,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = FontFamily.SansSerif,
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier
@@ -270,7 +270,7 @@ class GeohashPickerActivity : OrientationAwareActivity() {
                                         Text(
                                             text = stringResource(R.string.select),
                                             fontSize = (BASE_FONT_SIZE - 2).sp,
-                                            fontFamily = FontFamily.Monospace
+                                            fontFamily = FontFamily.SansSerif
                                         )
                                     }
                                 }

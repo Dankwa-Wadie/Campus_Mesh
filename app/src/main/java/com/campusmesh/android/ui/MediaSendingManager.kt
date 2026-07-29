@@ -16,6 +16,7 @@ class MediaSendingManager(
     private val state: ChatState,
     private val messageManager: MessageManager,
     private val channelManager: ChannelManager,
+    private val fileTransferManager: com.campusmesh.android.mesh.FileTransferManager,
     private val getMeshService: () -> MeshService
 ) {
     // Helper to get current mesh service (may change after panic clear)
@@ -76,9 +77,14 @@ class MediaSendingManager(
                 return
             }
             Log.d(TAG, "📁 File exists: size=${file.length()} bytes, name=${file.name}")
-            
+
             if (file.length() > MAX_FILE_SIZE) {
                 Log.e(TAG, "❌ File too large: ${file.length()} bytes (max: $MAX_FILE_SIZE)")
+                return
+            }
+
+            if (file.length() > com.campusmesh.android.model.FileChunkProtocol.CHUNK_THRESHOLD) {
+                sendChunkedFile(toPeerIDOrNull, channelOrNull, filePath, file.name, "image/jpeg", BitchatMessageType.Image)
                 return
             }
 
@@ -138,6 +144,17 @@ class MediaSendingManager(
             }
             Log.d(TAG, "📝 Original filename: $originalName")
 
+            val messageType = when {
+                mimeType.lowercase().startsWith("image/") -> BitchatMessageType.Image
+                mimeType.lowercase().startsWith("audio/") -> BitchatMessageType.Audio
+                else -> BitchatMessageType.File
+            }
+
+            if (file.length() > com.campusmesh.android.model.FileChunkProtocol.CHUNK_THRESHOLD) {
+                sendChunkedFile(toPeerIDOrNull, channelOrNull, filePath, originalName, mimeType, messageType)
+                return
+            }
+
             val filePacket = BitchatFilePacket(
                 fileName = originalName,
                 fileSize = file.length(),
@@ -145,12 +162,6 @@ class MediaSendingManager(
                 content = file.readBytes()
             )
             Log.d(TAG, "📦 Created file packet successfully")
-
-            val messageType = when {
-                mimeType.lowercase().startsWith("image/") -> BitchatMessageType.Image
-                mimeType.lowercase().startsWith("audio/") -> BitchatMessageType.Audio
-                else -> BitchatMessageType.File
-            }
 
             if (toPeerIDOrNull != null) {
                 sendPrivateFile(toPeerIDOrNull, filePacket, filePath, messageType)
@@ -271,12 +282,82 @@ class MediaSendingManager(
     }
 
     /**
+     * Send a file above [com.campusmesh.android.model.FileChunkProtocol.CHUNK_THRESHOLD] via the
+     * chunked/resumable path instead of one big single-packet send. Mirrors [sendPrivateFile] /
+     * [sendPublicFile]'s message-bubble + progress-seeding pattern so the rest of the app (delivery
+     * status icons, cancel button, [handleTransferProgressEvent]) doesn't need to know or care
+     * which path a given transfer took.
+     */
+    private fun sendChunkedFile(
+        toPeerIDOrNull: String?,
+        channelOrNull: String?,
+        filePath: String,
+        fileName: String,
+        mimeType: String,
+        messageType: BitchatMessageType
+    ) {
+        val transferId = fileTransferManager.sendChunked(toPeerIDOrNull, filePath, fileName, mimeType)
+        if (transferId == null) {
+            Log.e(TAG, "❌ Failed to start chunked send for $filePath")
+            return
+        }
+        Log.d(TAG, "📤 Chunked send started: name='$fileName', mime='$mimeType', transferId=${transferId.take(16)}…")
+
+        val message = if (toPeerIDOrNull != null) {
+            BitchatMessage(
+                id = java.util.UUID.randomUUID().toString().uppercase(),
+                sender = state.getNicknameValue() ?: "me",
+                content = filePath,
+                type = messageType,
+                timestamp = Date(),
+                isRelay = false,
+                isPrivate = true,
+                recipientNickname = try { meshService.getPeerNicknames()[toPeerIDOrNull] } catch (_: Exception) { null },
+                senderPeerID = meshService.myPeerID
+            )
+        } else {
+            BitchatMessage(
+                id = java.util.UUID.randomUUID().toString().uppercase(),
+                sender = state.getNicknameValue() ?: meshService.myPeerID,
+                content = filePath,
+                type = messageType,
+                timestamp = Date(),
+                isRelay = false,
+                senderPeerID = meshService.myPeerID,
+                channel = channelOrNull
+            )
+        }
+
+        if (toPeerIDOrNull != null) {
+            messageManager.addPrivateMessage(toPeerIDOrNull, message)
+        } else if (!channelOrNull.isNullOrBlank()) {
+            channelManager.addChannelMessage(channelOrNull, message, meshService.myPeerID)
+        } else {
+            messageManager.addMessage(message)
+        }
+
+        synchronized(transferMessageMap) {
+            transferMessageMap[transferId] = message.id
+            messageTransferMap[message.id] = transferId
+        }
+
+        messageManager.updateMessageDeliveryStatus(
+            message.id,
+            com.campusmesh.android.model.DeliveryStatus.PartiallyDelivered(0, 100)
+        )
+    }
+
+    /**
      * Cancel a media transfer by message ID
      */
     fun cancelMediaSend(messageId: String) {
         val transferId = synchronized(transferMessageMap) { messageTransferMap[messageId] }
         if (transferId != null) {
-            val cancelled = meshService.cancelFileTransfer(transferId)
+            // A chunked transfer isn't one fragmenting job the legacy call below can find (it's a
+            // sequence of independent packets sent over time), so it needs its own cancel path.
+            // Harmless no-op if this transferId isn't actually a chunked transfer.
+            val chunkedCancelled = fileTransferManager.cancelChunkedTransfer(transferId)
+            val cancelled = meshService.cancelFileTransfer(transferId) || chunkedCancelled
             if (cancelled) {
                 // Try to remove cached local file for this message (if any)
                 runCatching { findMessagePathById(messageId)?.let { java.io.File(it).delete() } }

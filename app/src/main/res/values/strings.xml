@@ -82,6 +82,7 @@
   <string name="cd_teleported">Teleported</string>
   <string name="cd_tor_status">Tor status</string>
   <string name="cd_connected_peers">Connected peers</string>
+  <string name="cd_invite_nearby_peers">Invite nearby peers</string>
   <string name="cd_geohash_participants">Geohash participants</string>
   <string name="cd_ready_for_handshake">Ready for handshake</string>
   <string name="cd_handshake_in_progress">Handshake in progress</string>
@@ -367,7 +368,7 @@
   <string name="location_tracking_warning">Campus Mesh does NOT track your location</string>
   <string name="at_symbol">@</string>
   <string name="app_brand">Campus Mesh/</string>
-  <string name="channel_count_prefix"> · ⧉ </string>
+  <string name="channel_count_prefix"> · #</string>
   <string name="geohash_people_header">PEOPLE</string>
   <string name="nobody_around">nobody around...</string>
   <string name="you_suffix"> (you)</string>

@@ -251,7 +251,7 @@ fun AboutSheet(
                             Text(
                                 text = stringResource(R.string.app_name),
                                 style = TextStyle(
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = FontFamily.SansSerif,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 28.sp,
                                     letterSpacing = 1.sp
@@ -261,13 +261,13 @@ fun AboutSheet(
                             Text(
                                 text = stringResource(R.string.version_prefix, versionName ?: ""),
                                 fontSize = 13.sp,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = FontFamily.SansSerif,
                                 color = colorScheme.onBackground.copy(alpha = 0.5f)
                             )
                             Text(
                                 text = stringResource(R.string.about_tagline),
                                 fontSize = 13.sp,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = FontFamily.SansSerif,
                                 color = colorScheme.onBackground.copy(alpha = 0.6f),
                                 modifier = Modifier.padding(top = 4.dp)
                             )
@@ -460,7 +460,7 @@ fun AboutSheet(
                                 Text(
                                     text = stringResource(R.string.tor_not_available_in_this_build),
                                     fontSize = 12.sp,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = FontFamily.SansSerif,
                                     color = colorScheme.onBackground.copy(alpha = 0.5f),
                                     modifier = Modifier.padding(start = 16.dp, top = 8.dp)
                                 )
@@ -498,7 +498,7 @@ fun AboutSheet(
                                             Text(
                                                 text = "$powDifficulty bits • ${NostrProofOfWork.estimateMiningTime(powDifficulty)}",
                                                 style = MaterialTheme.typography.bodySmall,
-                                                fontFamily = FontFamily.Monospace,
+                                                fontFamily = FontFamily.SansSerif,
                                                 color = colorScheme.onSurface.copy(alpha = 0.6f)
                                             )
                                         }
@@ -525,7 +525,7 @@ fun AboutSheet(
                                                 else -> stringResource(R.string.about_pow_desc_extreme)
                                             },
                                             fontSize = 12.sp,
-                                            fontFamily = FontFamily.Monospace,
+                                            fontFamily = FontFamily.SansSerif,
                                             color = colorScheme.onSurface.copy(alpha = 0.5f)
                                         )
                                     }
@@ -572,7 +572,7 @@ fun AboutSheet(
                                             Text(
                                                 text = torStatus.lastLogLine.take(120),
                                                 fontSize = 11.sp,
-                                                fontFamily = FontFamily.Monospace,
+                                                fontFamily = FontFamily.SansSerif,
                                                 color = colorScheme.onSurface.copy(alpha = 0.5f),
                                                 maxLines = 2
                                             )
@@ -634,7 +634,7 @@ fun AboutSheet(
                                     Text(
                                         text = stringResource(R.string.about_debug_settings),
                                         fontSize = 13.sp,
-                                        fontFamily = FontFamily.Monospace,
+                                        fontFamily = FontFamily.SansSerif,
                                         color = colorScheme.primary
                                     )
                                 }
@@ -642,7 +642,7 @@ fun AboutSheet(
                             Text(
                                 text = stringResource(R.string.about_footer),
                                 fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = FontFamily.SansSerif,
                                 color = colorScheme.onSurface.copy(alpha = 0.4f)
                             )
                             Spacer(modifier = Modifier.height(20.dp))
@@ -709,7 +709,7 @@ fun PasswordPromptDialog(
                         onValueChange = onPasswordChange,
                         label = { Text(stringResource(R.string.pwd_label), style = MaterialTheme.typography.bodyMedium) },
                         textStyle = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = FontFamily.SansSerif
                         ),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = colorScheme.primary,

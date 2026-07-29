@@ -43,11 +43,13 @@ fun LinkPreviewPill(
 ) {
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
-    val isDark = colorScheme.background.red + colorScheme.background.green + colorScheme.background.blue < 1.5f
-    
-    // iOS-style colors
-    val textColor = if (isDark) Color.Green else Color(red = 0f, green = 0.5f, blue = 0f)
-    val backgroundColor = if (isDark) Color.Gray.copy(alpha = 0.15f) else Color.Gray.copy(alpha = 0.08f)
+
+    // Old-brand "iOS-style green" replaced with the real GCTU primary blue, and the fragile
+    // `background == Color.Black`-style dark-mode heuristic (same bug class fixed in
+    // InputComponents.kt during Phase 3) dropped in favor of colorScheme roles directly, which
+    // are already theme-correct in both light and dark (Phase 8 polish pass).
+    val textColor = colorScheme.primary
+    val backgroundColor = colorScheme.surfaceVariant.copy(alpha = 0.4f)
     val borderColor = textColor.copy(alpha = 0.3f)
     
     // Parse URL for host extraction
@@ -87,7 +89,7 @@ fun LinkPreviewPill(
             Surface(
                 modifier = Modifier.size(60.dp),
                 shape = RoundedCornerShape(8.dp),
-                color = Color.Blue.copy(alpha = 0.1f)
+                color = colorScheme.primary.copy(alpha = 0.1f)
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -97,7 +99,7 @@ fun LinkPreviewPill(
                         imageVector = Icons.Outlined.Link,
                         contentDescription = stringResource(com.campusmesh.android.R.string.cd_link),
                         modifier = Modifier.size(24.dp),
-                        tint = Color.Blue
+                        tint = colorScheme.primary
                     )
                 }
             }
@@ -110,7 +112,7 @@ fun LinkPreviewPill(
                 // Title - matches iOS styling
                 Text(
                     text = displayTitle,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     fontSize = BASE_FONT_SIZE.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = textColor,
@@ -121,7 +123,7 @@ fun LinkPreviewPill(
                 // Host - matches iOS styling
                 Text(
                     text = displayHost,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     fontSize = 11.sp,
                     color = textColor.copy(alpha = 0.6f),
                     maxLines = 1,

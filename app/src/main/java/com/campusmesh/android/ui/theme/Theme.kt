@@ -16,31 +16,48 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 
-// Colors that match the iOS bitchat theme
+// Campus Mesh brand theme — GCTU's official blue and gold, replacing the old terminal
+// black/neon-green look. Values match campus_mesh_design_mockups.html exactly.
+// Blue = primary accent (headers, buttons, links, sent-message tint).
+// Gold = secondary accent (badges, pills, avatar ring, CTAs) — used sparingly, not as a base color.
 private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFF39FF14),        // Bright green (terminal-like)
-    onPrimary = Color.Black,
-    secondary = Color(0xFF2ECB10),      // Darker green
-    onSecondary = Color.Black,
-    background = Color.Black,
-    onBackground = Color(0xFF39FF14),   // Green on black
-    surface = Color(0xFF111111),        // Very dark gray
-    onSurface = Color(0xFF39FF14),      // Green text
-    error = Color(0xFFFF5555),          // Red for errors
-    onError = Color.Black
+    primary = Color(0xFF3E7BEA),            // Brand blue, brightened for dark-bg contrast
+    onPrimary = Color(0xFFEEF1F6),
+    primaryContainer = Color(0xFF1B355E),   // Outgoing message bubble
+    onPrimaryContainer = Color(0xFFEEF1F6),
+    secondary = Color(0xFFE3B655),          // Brand gold
+    onSecondary = Color(0xFF3A2A05),
+    secondaryContainer = Color(0xFF3A2D12), // Gold-tinted pill/badge background
+    onSecondaryContainer = Color(0xFFF2C766),
+    background = Color(0xFF0B1526),
+    onBackground = Color(0xFFEEF1F6),
+    surface = Color(0xFF13203A),
+    onSurface = Color(0xFFEEF1F6),
+    surfaceVariant = Color(0xFF22314F),     // Incoming bubble / row surface
+    onSurfaceVariant = Color(0xFFA7B0C0),
+    outline = Color(0xFF22314F),
+    error = Color(0xFFFF6B6B),
+    onError = Color(0xFF2C0B0B)
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFF008000),        // Dark green
-    onPrimary = Color.White,
-    secondary = Color(0xFF006600),      // Even darker green
-    onSecondary = Color.White,
-    background = Color.White,
-    onBackground = Color(0xFF008000),   // Dark green on white
-    surface = Color(0xFFF8F8F8),        // Very light gray
-    onSurface = Color(0xFF008000),      // Dark green text
-    error = Color(0xFFCC0000),          // Dark red for errors
-    onError = Color.White
+    primary = Color(0xFF17458F),            // Brand blue
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFDCE7FA),   // Outgoing message bubble
+    onPrimaryContainer = Color(0xFF17458F),
+    secondary = Color(0xFFD8A73D),          // Brand gold
+    onSecondary = Color(0xFF3A2A05),
+    secondaryContainer = Color(0xFFFBEFD1), // Gold-tinted pill/badge background
+    onSecondaryContainer = Color(0xFF8A6314),
+    background = Color(0xFFF5F7FA),
+    onBackground = Color(0xFF1A2233),
+    surface = Color(0xFFFFFFFF),
+    onSurface = Color(0xFF1A2233),
+    surfaceVariant = Color(0xFFE5E9F0),     // Incoming bubble border / row surface
+    onSurfaceVariant = Color(0xFF6B7280),
+    outline = Color(0xFFE5E9F0),
+    error = Color(0xFFCC0000),
+    onError = Color(0xFFFFFFFF)
 )
 
 @Composable

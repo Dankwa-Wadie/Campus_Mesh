@@ -105,7 +105,7 @@ private fun BatteryOptimizationEnabledContent(
                     Text(
                         text = stringResource(R.string.app_name),
                     style = MaterialTheme.typography.headlineLarge.copy(
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FontFamily.SansSerif,
                         fontWeight = FontWeight.Bold,
                         fontSize = 32.sp
                     ),
@@ -115,7 +115,7 @@ private fun BatteryOptimizationEnabledContent(
                     Text(
                         text = stringResource(R.string.battery_optimization_detected_title),
                     fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     color = colorScheme.onBackground.copy(alpha = 0.7f)
                 )
             }
@@ -225,7 +225,7 @@ private fun BatteryOptimizationEnabledContent(
                     Text(
                         text = stringResource(R.string.disable_battery_optimization),
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FontFamily.SansSerif,
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -243,7 +243,7 @@ private fun BatteryOptimizationEnabledContent(
                         Text(
                             text = stringResource(R.string.check_again),
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = FontFamily.SansSerif
                         )
                     )
                 }
@@ -259,7 +259,7 @@ private fun BatteryOptimizationEnabledContent(
                         Text(
                             text = stringResource(R.string.battery_optimization_skip),
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = FontFamily.SansSerif
                         )
                     )
                 }
@@ -284,7 +284,7 @@ private fun BatteryOptimizationCheckingContent(
             Text(
                 text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineLarge.copy(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.Bold,
                     fontSize = 32.sp
                 ),
@@ -294,7 +294,7 @@ private fun BatteryOptimizationCheckingContent(
                 Text(
                     text = stringResource(R.string.battery_optimization_disabled_title),
                 fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 color = colorScheme.onBackground.copy(alpha = 0.7f)
             )
         }
@@ -322,7 +322,7 @@ private fun BatteryOptimizationCheckingContent(
             Text(
                 text = stringResource(R.string.battery_optimization_success_message),
             style = MaterialTheme.typography.bodyMedium.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 color = colorScheme.onBackground.copy(alpha = 0.8f)
             ),
             textAlign = TextAlign.Center
@@ -347,7 +347,7 @@ private fun BatteryOptimizationNotSupportedContent(
             Text(
                 text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineLarge.copy(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.Bold,
                     fontSize = 32.sp
                 ),
@@ -357,7 +357,7 @@ private fun BatteryOptimizationNotSupportedContent(
             Text(
                 text = stringResource(R.string.battery_optimization_not_required),
                 fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 color = colorScheme.onBackground.copy(alpha = 0.7f)
             )
         }
@@ -372,7 +372,7 @@ private fun BatteryOptimizationNotSupportedContent(
         Text(
             text = stringResource(R.string.battery_optimization_not_supported_message),
             style = MaterialTheme.typography.bodyMedium.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 color = colorScheme.onBackground.copy(alpha = 0.8f)
             ),
             textAlign = TextAlign.Center
@@ -388,7 +388,7 @@ private fun BatteryOptimizationNotSupportedContent(
                 Text(
                     text = stringResource(R.string.continue_btn),
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.Bold
                 )
             )

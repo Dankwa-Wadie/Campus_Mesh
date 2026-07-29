@@ -99,7 +99,9 @@ fun VerificationSheet(
     if (!isPresented) return
 
     val isDark = isSystemInDarkTheme()
-    val accent = if (isDark) Color.Green else Color(0xFF008000)
+    // Was hardcoded terminal green - now the brand blue, matching the same fix in
+    // SecurityVerificationSheet.kt and LocationNotesSheet.kt.
+    val accent = MaterialTheme.colorScheme.primary
     
     var selectedTab by remember { mutableStateOf(0) } // 0 = My Code, 1 = Scan
     val nickname by viewModel.nickname.collectAsStateWithLifecycle()
@@ -144,7 +146,7 @@ fun VerificationSheet(
                     text = {
                         Text(
                             text = "My QR",
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = FontFamily.SansSerif,
                             fontSize = 14.sp
                         )
                     }
@@ -155,7 +157,7 @@ fun VerificationSheet(
                     text = {
                         Text(
                             text = "Scan",
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = FontFamily.SansSerif,
                             fontSize = 14.sp
                         )
                     }
@@ -208,7 +210,7 @@ fun VerificationSheet(
                     ) {
                         Text(
                             text = stringResource(R.string.verify_remove),
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = FontFamily.SansSerif,
                             fontSize = 12.sp
                         )
                     }
@@ -232,7 +234,7 @@ private fun VerificationHeader(
         Text(
             text = stringResource(R.string.verify_title).uppercase(),
             fontSize = 14.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = FontFamily.SansSerif,
             color = accent
         )
         CloseButton(onClick = onClose)
@@ -258,7 +260,7 @@ private fun MyQrTabContent(
         Text(
             text = stringResource(R.string.verify_my_qr_title),
             style = MaterialTheme.typography.titleMedium,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = FontFamily.SansSerif,
             color = accent
         )
         
@@ -283,7 +285,7 @@ private fun MyQrTabContent(
             ) {
                 Text(
                     text = stringResource(R.string.verify_qr_unavailable),
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     fontSize = 12.sp,
                     color = Color.Black.copy(alpha = 0.6f)
                 )
@@ -296,7 +298,7 @@ private fun MyQrTabContent(
         Text(
             text = nickname,
             style = MaterialTheme.typography.headlineSmall,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = FontFamily.SansSerif,
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center
         )
@@ -307,7 +309,7 @@ private fun MyQrTabContent(
         Text(
             text = stringResource(R.string.app_name).lowercase(),
             style = MaterialTheme.typography.bodyMedium,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = FontFamily.SansSerif,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
             textAlign = TextAlign.Center
         )
@@ -355,7 +357,7 @@ private fun ScanTabContent(
                 Text(
                     text = stringResource(R.string.verify_scan_prompt_friend),
                     color = Color.White,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     fontSize = 12.sp,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -386,7 +388,7 @@ private fun ScanTabContent(
                 Spacer(modifier = Modifier.height(24.dp))
                 Text(
                     text = stringResource(R.string.verify_camera_permission),
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -397,7 +399,7 @@ private fun ScanTabContent(
                 ) {
                     Text(
                         text = stringResource(R.string.verify_request_camera),
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = FontFamily.SansSerif
                     )
                 }
             }

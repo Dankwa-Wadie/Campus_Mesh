@@ -25,7 +25,9 @@ fun RealtimeScrollingWaveform(
     modifier: Modifier = Modifier,
     amplitudeNorm: Float,
     bars: Int = 240,
-    barColor: Color = Color(0xFF00FF7F),
+    // Old-brand green default kept only as a last-resort fallback; the live call site
+    // (InputComponents.kt) always passes the current theme's primary color explicitly.
+    barColor: Color = Color(0xFF3E7BEA),
     baseColor: Color = Color(0xFF444444)
 ) {
     val latestAmp by rememberUpdatedState(amplitudeNorm)

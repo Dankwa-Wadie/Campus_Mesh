@@ -9,6 +9,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import java.net.Inet4Address
+import java.net.NetworkInterface
 
 /**
  * Manages the Local-Only Wi-Fi Hotspot on Android and publishes the HTTP Ktor service via mDNS.
@@ -30,6 +32,14 @@ object WifiHotspotManager {
         private set
 
     @Volatile var isHotspotActive: Boolean = false
+        private set
+
+    // Real, reachable IP of this device on the hotspot interface. NsdManager's registerService()
+    // below publishes a DNS-SD *service* record, not a custom "campusmesh.local" *host* A record —
+    // Android's public API doesn't let an app claim an arbitrary mDNS hostname, so
+    // "http://campusmesh.local:8080" is not guaranteed to resolve in Safari/Chrome even though
+    // the service itself is discoverable. This IP is the guaranteed-working fallback.
+    @Volatile var hotspotGatewayIp: String? = null
         private set
 
     fun startHotspotAndMdns(context: Context) {
@@ -61,7 +71,10 @@ object WifiHotspotManager {
                             Log.w(TAG, "Local Hotspot started but configuration was null.")
                         }
 
-                        // Register mDNS after Hotspot is up
+                        hotspotGatewayIp = findLocalIpv4Address()
+                        Log.i(TAG, "🌐 Gateway URL for QR / manual entry: http://${hotspotGatewayIp ?: "unknown"}:8080")
+
+                        // Register mDNS after Hotspot is up (best-effort; see hotspotGatewayIp doc above)
                         registerMdnsService(context)
                     }
 
@@ -147,6 +160,32 @@ object WifiHotspotManager {
         hotspotReservation = null
         hotspotSsid = null
         hotspotPassword = null
+        hotspotGatewayIp = null
         isHotspotActive = false
+    }
+
+    /**
+     * Finds this device's own IPv4 address on a local (non-loopback) interface — this is the
+     * gateway address other devices on the same hotspot/Wi-Fi network use to reach our Ktor
+     * server. Prefers interfaces that look like an AP/hotspot interface (ap*, wlan*, swlan*)
+     * but falls back to the first non-loopback IPv4 address found.
+     */
+    private fun findLocalIpv4Address(): String? {
+        return try {
+            val interfaces = java.util.Collections.list(NetworkInterface.getNetworkInterfaces())
+            val candidates = interfaces
+                .filter { it.isUp && !it.isLoopback }
+                .flatMap { iface -> java.util.Collections.list(iface.inetAddresses).map { iface.name to it } }
+                .filter { (_, addr) -> addr is Inet4Address && !addr.isLoopbackAddress }
+
+            // Prefer typical hotspot/AP interface names first
+            candidates.firstOrNull { (name, _) ->
+                name.startsWith("ap") || name.startsWith("wlan") || name.startsWith("swlan")
+            }?.second?.hostAddress
+                ?: candidates.firstOrNull()?.second?.hostAddress
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not determine local IPv4 address: ${e.message}")
+            null
+        }
     }
 }

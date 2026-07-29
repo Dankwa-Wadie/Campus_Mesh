@@ -309,7 +309,26 @@ class MainActivity : OrientationAwareActivity() {
                 )
             }
 
-            OnboardingState.CHECKING, OnboardingState.INITIALIZING, OnboardingState.COMPLETE -> {
+            OnboardingState.CAMPUS_SETUP -> {
+                com.campusmesh.android.ui.SetupWizardScreen(
+                    modifier = modifier,
+                    onComplete = { nickname, role, mode ->
+                        handleSetupWizardComplete(nickname, role, mode)
+                    }
+                )
+            }
+
+            OnboardingState.CHECKING, OnboardingState.INITIALIZING -> {
+                // Mesh services are starting up in the background (see initializeApp()'s ~1.5s
+                // of delay + setup work) and we don't yet know whether the next screen is the
+                // first-run SetupWizardScreen or the chat screen. Rendering ChatScreen here (as
+                // this branch used to, grouped with COMPLETE) briefly flashed the real chat UI
+                // with a blank/default nickname before snapping to the wizard once init finished
+                // -- showing the same loading screen as PERMISSION_REQUESTING keeps this seamless.
+                InitializingScreen(modifier)
+            }
+
+            OnboardingState.COMPLETE -> {
                 // Set up back navigation handling for the chat screen
                 val backCallback = object : OnBackPressedCallback(true) {
                     override fun handleOnBackPressed() {
@@ -327,7 +346,26 @@ class MainActivity : OrientationAwareActivity() {
 
                 // Add the callback - this will be automatically removed when the activity is destroyed
                 onBackPressedDispatcher.addCallback(this, backCallback)
-                ChatScreen(viewModel = chatViewModel)
+
+                // Chat list (new home screen) <-> conversation detail (existing ChatScreen),
+                // per docs/UI_REDESIGN_IMPLEMENTATION_PLAN.md Phase 2. ChatScreen itself is
+                // unchanged - it still reads its content from currentChannel/
+                // selectedPrivateChatPeer/selectedLocationChannel exactly as before; showChatList
+                // only controls which of the two top-level screens is visible.
+                //
+                // Settings & Profile (Phase 5) and Map (Phase 6) are both checked with higher
+                // priority than showChatList, per the comments in ChatState.kt - each is reachable
+                // from (and returns to) whatever was showing underneath without disturbing the
+                // chat-list/conversation flag.
+                val showSettings by chatViewModel.showSettings.collectAsState()
+                val showMap by chatViewModel.showMap.collectAsState()
+                val showChatList by chatViewModel.showChatList.collectAsState()
+                when {
+                    showSettings -> com.campusmesh.android.ui.SettingsScreen(viewModel = chatViewModel)
+                    showMap -> com.campusmesh.android.ui.MapScreen(viewModel = chatViewModel)
+                    showChatList -> com.campusmesh.android.ui.ChatListScreen(viewModel = chatViewModel)
+                    else -> ChatScreen(viewModel = chatViewModel)
+                }
             }
             
             OnboardingState.ERROR -> {
@@ -610,6 +648,19 @@ class MainActivity : OrientationAwareActivity() {
         }
     }
     
+    /**
+     * Called when the first-run SetupWizardScreen (campus mode, nickname, role) finishes.
+     * Applies the choices, persists that setup is done so it never shows again, and proceeds
+     * to the normal chat screen.
+     */
+    private fun handleSetupWizardComplete(nickname: String, role: String, mode: com.campusmesh.android.data.AppMode) {
+        Log.d("MainActivity", "Setup wizard complete: nickname=$nickname role=$role mode=$mode")
+        chatViewModel.setNickname(nickname)
+        com.campusmesh.android.services.AppStateStore.setAppMode(mode)
+        com.campusmesh.android.onboarding.CampusSetupPreferenceManager.markSetupComplete(this, role)
+        mainViewModel.updateOnboardingState(OnboardingState.COMPLETE)
+    }
+
     private fun handleOnboardingFailed(message: String) {
         Log.e("MainActivity", "Onboarding failed: $message")
         mainViewModel.updateErrorMessage(message)
@@ -743,7 +794,13 @@ class MainActivity : OrientationAwareActivity() {
                 // Small delay to ensure mesh service is fully initialized
                 delay(500)
                 Log.d("MainActivity", "App initialization complete")
-                mainViewModel.updateOnboardingState(OnboardingState.COMPLETE)
+
+                // First-run only: show the campus/nickname/role setup wizard before landing on chat.
+                if (com.campusmesh.android.onboarding.CampusSetupPreferenceManager.isSetupComplete(this@MainActivity)) {
+                    mainViewModel.updateOnboardingState(OnboardingState.COMPLETE)
+                } else {
+                    mainViewModel.updateOnboardingState(OnboardingState.CAMPUS_SETUP)
+                }
             } catch (e: Exception) {
                 Log.e("MainActivity", "Failed to initialize app", e)
                 handleOnboardingFailed("Failed to initialize the app: ${e.message}")

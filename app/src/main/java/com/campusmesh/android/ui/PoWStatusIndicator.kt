@@ -103,7 +103,7 @@ fun PoWStatusIndicator(
                             stringResource(R.string.pow_label_format, powDifficulty)
                         },
                         fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FontFamily.SansSerif,
                         color = if (isMining) Color(0xFFFF9500) else {
                             colorScheme.onSurface.copy(alpha = 0.7f)
                         }
@@ -114,7 +114,7 @@ fun PoWStatusIndicator(
                         Text(
                             text = stringResource(R.string.pow_time_estimate, NostrProofOfWork.estimateMiningTime(powDifficulty)),
                             fontSize = 9.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = FontFamily.SansSerif,
                             color = colorScheme.onSurface.copy(alpha = 0.5f)
                         )
                     }

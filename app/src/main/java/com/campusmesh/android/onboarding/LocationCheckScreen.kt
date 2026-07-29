@@ -69,18 +69,19 @@ private fun LocationDisabledContent(
         verticalArrangement = Arrangement.spacedBy(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Location icon - using LocationOn outlined icon in app's green color
+        // Location icon - leftover old-brand green replaced with the real GCTU primary blue
+        // (docs/UI_REDESIGN_IMPLEMENTATION_PLAN.md Phase 7 spot-fix pass)
         Icon(
             imageVector = Icons.Outlined.LocationOn,
             contentDescription = stringResource(R.string.cd_location_services),
             modifier = Modifier.size(64.dp),
-            tint = Color(0xFF00C851) // App's main green color
+            tint = colorScheme.primary
         )
 
         Text(
             text = stringResource(R.string.location_services_required),
             style = MaterialTheme.typography.headlineSmall.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold,
                 color = colorScheme.primary
             ),
@@ -122,7 +123,7 @@ private fun LocationDisabledContent(
                     Text(
                         text = stringResource(R.string.location_explanation),
                     style = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FontFamily.SansSerif,
                         color = colorScheme.onSurface.copy(alpha = 0.8f)
                     )
                 )
@@ -142,7 +143,7 @@ private fun LocationDisabledContent(
                     Text(
                         text = stringResource(R.string.location_needs_bullets),
                     style = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FontFamily.SansSerif,
                         color = colorScheme.onSurface.copy(alpha = 0.8f)
                     )
                 )
@@ -160,13 +161,13 @@ private fun LocationDisabledContent(
                     onClick = onEnableLocation,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF00C851) // App's main green color
+                        containerColor = colorScheme.primary // old-brand green -> GCTU primary blue
                     )
                 ) {
                         Text(
                             text = stringResource(R.string.open_location_settings),
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.Bold
                         ),
                         modifier = Modifier.padding(vertical = 4.dp)
@@ -180,7 +181,7 @@ private fun LocationDisabledContent(
                         Text(
                             text = stringResource(R.string.check_again),
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = FontFamily.SansSerif
                         ),
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
@@ -209,7 +210,7 @@ private fun LocationNotAvailableContent(
         Text(
             text = stringResource(R.string.location_services_unavailable),
             style = MaterialTheme.typography.headlineSmall.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold,
                 color = colorScheme.error
             ),
@@ -226,7 +227,7 @@ private fun LocationNotAvailableContent(
             Text(
                 text = stringResource(R.string.location_unavailable_explanation),
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     color = colorScheme.onSurface
                 ),
                 modifier = Modifier.padding(16.dp),
@@ -247,7 +248,7 @@ private fun LocationCheckingContent(
         Text(
             text = stringResource(R.string.app_name),
             style = MaterialTheme.typography.headlineLarge.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold,
                 color = colorScheme.primary
             ),
@@ -259,7 +260,7 @@ private fun LocationCheckingContent(
         Text(
             text = stringResource(R.string.checking_location_services),
             style = MaterialTheme.typography.bodyLarge.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 color = colorScheme.onSurface.copy(alpha = 0.7f)
             )
         )
@@ -288,7 +289,7 @@ private fun LocationLoadingIndicator() {
             modifier = Modifier
                 .fillMaxSize()
                 .rotate(rotationAngle),
-            color = Color(0xFF4CAF50), // Location green
+            color = MaterialTheme.colorScheme.primary, // old-brand green -> GCTU primary blue
             strokeWidth = 3.dp
         )
     }

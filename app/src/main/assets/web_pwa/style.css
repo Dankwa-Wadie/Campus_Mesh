@@ -629,6 +629,35 @@ body {
     color: var(--accent);
 }
 
+.ghost-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    margin-top: 14px;
+    padding: 10px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.ghost-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.ghost-toggle-btn.ghost-active {
+    background: rgba(148, 163, 184, 0.18);
+    border-color: var(--text-secondary);
+    color: var(--text-secondary);
+}
+
 /* Custom leaflet map markers */
 .custom-pin {
     background-color: var(--accent);

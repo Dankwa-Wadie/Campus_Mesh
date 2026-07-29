@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -41,7 +42,14 @@ fun ScrollingWaveformRecorder(
             kotlinx.coroutines.delay(80)
         }
     }
-    WaveformCanvas(modifier = modifier, samples = samples, fillProgress = 1f, baseColor = Color(0xFF444444), fillColor = Color(0xFF00FF7F))
+    // Old-brand "Matrix green" replaced with the real GCTU primary blue (Phase 8 polish pass)
+    WaveformCanvas(
+        modifier = modifier,
+        samples = samples,
+        fillProgress = 1f,
+        baseColor = Color(0xFF444444),
+        fillColor = MaterialTheme.colorScheme.primary
+    )
 }
 
 @Composable
@@ -70,14 +78,16 @@ fun WaveformPreview(
             }
         }
     }
+    // Old-brand green replaced: blue (primary) while sending, gold (secondary) during playback -
+    // matches the design system's blue-for-action/gold-for-highlight convention (Phase 8 polish pass)
     WaveformCanvas(
         modifier = modifier,
         samples = stateSamples,
         fillProgress = if (stateSamples.isEmpty()) 0f else progress,
-        baseColor = Color(0x2200FF7F),
+        baseColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f),
         fillColor = when {
-            sendProgress != null -> Color(0xFF1E88E5) // blue while sending
-            else -> Color(0xFF00C851) // green during playback
+            sendProgress != null -> MaterialTheme.colorScheme.primary
+            else -> MaterialTheme.colorScheme.secondary
         },
         onSeek = onSeek
     )

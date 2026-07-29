@@ -76,7 +76,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.BitchatAndroid"
+        android:theme="@style/Theme.CampusMeshAndroid"
         tools:targetApi="31">
         <!-- FileProvider for sharing temp/cache files with external viewers -->
         <provider
@@ -91,13 +91,13 @@
         <activity
             android:name=".ui.GeohashPickerActivity"
             android:exported="false"
-            android:theme="@style/Theme.BitchatAndroid"
+            android:theme="@style/Theme.CampusMeshAndroid"
             android:windowSoftInputMode="adjustResize" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.BitchatAndroid"
+            android:theme="@style/Theme.CampusMeshAndroid"
             android:windowSoftInputMode="adjustResize"
             android:launchMode="singleTop">
             <intent-filter>

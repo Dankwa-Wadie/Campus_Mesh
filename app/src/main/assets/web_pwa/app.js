@@ -12,9 +12,15 @@ let offlineTileLayer = null;
 
 // GCTU Campus Coordinates
 const CAMPUSES = {
-    main: { name: "GCTU Main Campus (Tesano)", lat: 5.6115, lon: -0.2290, radius: 300 },
-    abeka: { name: "Abeka Campus (SITB)", lat: 5.6025, lon: -0.2425, radius: 200 }
+    main: { name: "GCTU Main Campus (Tesano)", lat: 5.5961352, lon: -0.2234766, radius: 300 },
+    abeka: { name: "Abeka Campus (SITB)", lat: 5.5995349, lon: -0.2388291, radius: 200 }
 };
+
+// Ghost Mode: when true, this client never sends its own marker to the map layer and never
+// requests peer position broadcast. Persisted client-side; the native gateway is told about it
+// via the WebSocket handshake so it can (in the future, once real peer-location broadcast
+// exists) suppress this device from other peers' maps too.
+let isGhostMode = localStorage.getItem('campusmesh_ghost_mode') === 'true';
 
 // DOM Elements
 const onboardingOverlay = document.getElementById('onboarding-overlay');
@@ -95,7 +101,7 @@ joinBtn.addEventListener('click', async () => {
 });
 
 // Generate Web Crypto Key ID or Fallback
-async fun generateIdentityID() {
+async function generateIdentityID() {
     try {
         if (window.crypto && window.crypto.subtle) {
             // Generate a random seed key pair (Web Crypto Subtle)
@@ -135,6 +141,21 @@ function initializeUI() {
 
     // Initial setup of Leaflet Map
     setupMap();
+
+    // Ghost Mode toggle
+    const ghostBtn = document.getElementById('ghost-mode-toggle');
+    if (ghostBtn) {
+        updateGhostModeButton();
+        ghostBtn.addEventListener('click', () => setGhostMode(!isGhostMode));
+    }
+}
+
+function updateGhostModeButton() {
+    const btn = document.getElementById('ghost-mode-toggle');
+    const label = document.getElementById('ghost-mode-label');
+    if (!btn || !label) return;
+    btn.classList.toggle('ghost-active', isGhostMode);
+    label.textContent = isGhostMode ? 'Ghost Mode: On' : 'Go Ghost';
 }
 
 // --- WebSocket Connection ---
@@ -155,7 +176,8 @@ function connectWebSocket() {
             type: "handshake",
             peerID: myPeerID,
             username: myUsername,
-            role: myRole
+            role: myRole,
+            ghostMode: isGhostMode
         };
         socket.send(JSON.stringify(handshake));
     };
@@ -408,13 +430,44 @@ function setupMap() {
         radius: CAMPUSES.abeka.radius
     }).addTo(map).bindPopup("Abeka Campus (SITB)");
 
-    // Plot our own marker
+    // Plot our own marker — suppressed entirely while Ghost Mode is on, matching the
+    // "nothing is ever sent" behavior GhostModePreferenceManager documents on the native side.
+    renderOwnMarker();
+}
+
+let ownMarker = null;
+
+function renderOwnMarker() {
+    if (!map) return;
+    if (ownMarker) {
+        map.removeLayer(ownMarker);
+        ownMarker = null;
+    }
+    if (isGhostMode) return; // Ghosted: no marker, no position leaves the client.
+
+    const gctuCenter = [CAMPUSES.main.lat, CAMPUSES.main.lon];
     const myPin = L.divIcon({
         className: 'custom-pin',
         html: 'You',
         iconSize: [30, 30]
     });
-    L.marker(gctuCenter, { icon: myPin }).addTo(map).bindPopup(`You (${myUsername}) - ${myRole}`);
+    ownMarker = L.marker(gctuCenter, { icon: myPin }).addTo(map).bindPopup(`You (${myUsername}) - ${myRole}`);
+}
+
+/**
+ * Toggles Ghost Mode: hides/shows this client's own marker and persists the choice. Real
+ * peer-location mesh broadcast doesn't exist yet (see updatePeerLocationMock below), so today
+ * this only controls our own marker and the flag sent in the handshake — it's the plumbing
+ * ready for when peer positions are actually transmitted over the mesh.
+ */
+function setGhostMode(enabled) {
+    isGhostMode = enabled;
+    localStorage.setItem('campusmesh_ghost_mode', enabled ? 'true' : 'false');
+    renderOwnMarker();
+    updateGhostModeButton();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'ghost_mode', peerID: myPeerID, enabled }));
+    }
 }
 
 // Mock peer location around campus for presentation wow factor

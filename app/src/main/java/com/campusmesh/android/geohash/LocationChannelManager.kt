@@ -10,6 +10,9 @@ import android.location.LocationManager
 import android.os.Bundle
 import android.util.Log
 import androidx.core.app.ActivityCompat
+import com.campusmesh.android.config.ConfigLoader
+import com.campusmesh.android.data.AppMode
+import com.campusmesh.android.services.AppStateStore
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import kotlinx.coroutines.*
@@ -161,6 +164,22 @@ class LocationChannelManager private constructor(private val context: Context) {
             Log.d(TAG, "Permission not granted")
             _permissionState.value = PermissionState.DENIED
         }
+    }
+
+    /**
+     * Re-checks the OS-level permission grant and updates [permissionState] accordingly.
+     *
+     * Needed because this manager is a process-wide singleton created once (permission is only
+     * checked in [init]): if permission was denied at that time -- e.g. during onboarding, or
+     * simply because this class happened to be constructed before the user responded to the
+     * prompt -- nothing else re-syncs the cached state on its own. [refreshChannels] and
+     * [beginLiveRefresh] both intentionally short-circuit when [permissionState] isn't already
+     * AUTHORIZED, so they can never self-heal a stale DENIED value even after the user grants
+     * permission from system Settings. Call this whenever a permission-gated UI (like
+     * LocationChannelsSheet) becomes visible, so a Settings-granted permission is picked up.
+     */
+    fun refreshPermissionState() {
+        checkAndSyncPermission()
     }
 
     /**
@@ -325,28 +344,38 @@ class LocationChannelManager private constructor(private val context: Context) {
 
     private var lastEnteredCampus: String? = null
 
+    /**
+     * Soft-geofence check: on every location update, compares distance to each configured
+     * campus (from school_config.json, not hardcoded here) and publishes the resulting
+     * [AppMode] to [AppStateStore] so the rest of the app (channel list, map gating, etc.)
+     * reacts automatically. Falls back to GENERAL_MESH once the device leaves all campus radii.
+     *
+     * This does not fight a manual mode override: it only runs when the location provider
+     * delivers a new fix, and [AppStateStore.setAppMode] can be called directly elsewhere
+     * (e.g. a manual toggle in Settings) between fixes.
+     */
     private fun checkSoftGeofences(location: Location) {
-        val mainCenter = Location("").apply {
-            latitude = 5.6115
-            longitude = -0.2290
-        }
-        val abekaCenter = Location("").apply {
-            latitude = 5.6025
-            longitude = -0.2425
-        }
-
-        val distToMain = location.distanceTo(mainCenter)
-        val distToAbeka = location.distanceTo(abekaCenter)
+        val campuses = ConfigLoader.load(context).campuses
+        val mainCampus = campuses.getOrNull(0)
+        val abekaCampus = campuses.getOrNull(1)
 
         var enteredCampus: String? = null
-        if (distToMain <= 300) {
-            enteredCampus = "GCTU Main Campus (Tesano)"
-        } else if (distToAbeka <= 200) {
-            enteredCampus = "Abeka Campus (SITB)"
+        var enteredMode = AppMode.GENERAL_MESH
+
+        val distToMain = mainCampus?.let { distanceToMeters(location, it.lat, it.lon) }
+        val distToAbeka = abekaCampus?.let { distanceToMeters(location, it.lat, it.lon) }
+
+        if (mainCampus != null && distToMain != null && distToMain <= mainCampus.radiusMeters) {
+            enteredCampus = mainCampus.name
+            enteredMode = AppMode.MAIN_CAMPUS
+        } else if (abekaCampus != null && distToAbeka != null && distToAbeka <= abekaCampus.radiusMeters) {
+            enteredCampus = abekaCampus.name
+            enteredMode = AppMode.ABEKA_CAMPUS
         }
 
         if (enteredCampus != null && enteredCampus != lastEnteredCampus) {
             lastEnteredCampus = enteredCampus
+            AppStateStore.setAppMode(enteredMode)
             scope.launch(Dispatchers.Main) {
                 android.widget.Toast.makeText(
                     context,
@@ -357,7 +386,16 @@ class LocationChannelManager private constructor(private val context: Context) {
         } else if (enteredCampus == null && lastEnteredCampus != null) {
             Log.d(TAG, "Left campus: $lastEnteredCampus")
             lastEnteredCampus = null
+            AppStateStore.setAppMode(AppMode.GENERAL_MESH)
         }
+    }
+
+    private fun distanceToMeters(from: Location, lat: Double, lon: Double): Float {
+        val target = Location("").apply {
+            latitude = lat
+            longitude = lon
+        }
+        return from.distanceTo(target)
     }
 
     private fun onLocationUpdated(location: Location) {

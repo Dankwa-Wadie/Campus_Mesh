@@ -74,10 +74,20 @@ fun ChatScreen(viewModel: ChatViewModel) {
     var initialViewerIndex by remember { mutableStateOf(0) }
     var forceScrollToBottom by remember { mutableStateOf(false) }
     var isScrolledUp by remember { mutableStateOf(false) }
+    var showInviteQrDialog by remember { mutableStateOf(false) }
 
     // Show password dialog when needed
     LaunchedEffect(showPasswordPrompt) {
         showPasswordDialog = showPasswordPrompt
+    }
+
+    // Campus-preset channel auto-join: reacts to AppMode changes from
+    // LocationChannelManager's geofence check (Main Campus is otherwise reached directly via
+    // the pinned geohash channel in LocationChannelsSheet, not a manual mode picker).
+    LaunchedEffect(Unit) {
+        com.campusmesh.android.services.AppStateStore.currentAppMode.collect { mode ->
+            applyChannelsForMode(mode, viewModel)
+        }
     }
 
     val isConnected by viewModel.isConnected.collectAsStateWithLifecycle()
@@ -252,7 +262,8 @@ fun ChatScreen(viewModel: ChatViewModel) {
             onShowAppInfo = { viewModel.showAppInfo() },
             onPanicClear = { viewModel.panicClearAllData() },
             onLocationChannelsClick = { showLocationChannelsSheet = true },
-            onLocationNotesClick = { showLocationNotesSheet = true }
+            onLocationNotesClick = { showLocationNotesSheet = true },
+            onInvitePeersClick = { showInviteQrDialog = true }
         )
 
         // Divider under header - positioned after status bar + header height
@@ -282,13 +293,14 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 color = colorScheme.background,
                 tonalElevation = 3.dp,
                 shadowElevation = 6.dp,
-                border = BorderStroke(2.dp, Color(0xFF00C851))
+                // Old-brand green replaced with the real GCTU primary blue (Phase 8 polish pass)
+                border = BorderStroke(2.dp, colorScheme.primary)
             ) {
                 IconButton(onClick = { forceScrollToBottom = !forceScrollToBottom }) {
                     Icon(
                         imageVector = Icons.Filled.ArrowDownward,
                         contentDescription = stringResource(com.campusmesh.android.R.string.cd_scroll_to_bottom),
-                        tint = Color(0xFF00C851)
+                        tint = colorScheme.primary
                     )
                 }
             }
@@ -344,6 +356,12 @@ fun ChatScreen(viewModel: ChatViewModel) {
         showMeshPeerListSheet = showMeshPeerListSheet,
         onMeshPeerListDismiss = viewModel::hideMeshPeerList,
     )
+
+    // Invite Nearby Peers QR (Wi-Fi hotspot + PWA gateway, started automatically by
+    // MeshForegroundService — this dialog just surfaces the already-running gateway's QR/URL)
+    if (showInviteQrDialog) {
+        HotspotQrDialog(onDismiss = { showInviteQrDialog = false })
+    }
 }
 
 @Composable
@@ -419,7 +437,8 @@ private fun ChatFloatingHeader(
     onShowAppInfo: () -> Unit,
     onPanicClear: () -> Unit,
     onLocationChannelsClick: () -> Unit,
-    onLocationNotesClick: () -> Unit
+    onLocationNotesClick: () -> Unit,
+    onInvitePeersClick: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val locationManager = remember { com.campusmesh.android.geohash.LocationChannelManager.getInstance(context) }
@@ -452,7 +471,8 @@ private fun ChatFloatingHeader(
                         // Ensure location is loaded before showing sheet
                         locationManager.refreshChannels()
                         onLocationNotesClick()
-                    }
+                    },
+                    onInvitePeersClick = onInvitePeersClick
                 )
             },
             colors = TopAppBarDefaults.topAppBarColors(
@@ -460,6 +480,33 @@ private fun ChatFloatingHeader(
             ),
             modifier = Modifier.height(headerHeight) // Ensure compact header height
         )
+    }
+}
+
+/**
+ * Joins the preset channels for a campus mode. Off-campus (GENERAL_MESH) doesn't force-leave
+ * anything -- it just stops auto-joining campus-only channels going forward. Called from the
+ * [com.campusmesh.android.services.AppStateStore.currentAppMode] collector above, which reacts
+ * to [com.campusmesh.android.geohash.LocationChannelManager]'s geofence detection now that there
+ * is no manual mode-picker UI (Main Campus is reached directly via the pinned geohash channel in
+ * LocationChannelsSheet).
+ *
+ * Only calls [ChatViewModel.joinChannel] for channels not already joined: that function also
+ * *switches* the active channel view when the channel is already joined (matches its use
+ * elsewhere as a `/join` command), so calling it unconditionally here would yank the user's
+ * current view to a preset channel every time the mode re-confirms, not just on first entry.
+ */
+private fun applyChannelsForMode(mode: com.campusmesh.android.data.AppMode, viewModel: ChatViewModel) {
+    val presets = when (mode) {
+        com.campusmesh.android.data.AppMode.MAIN_CAMPUS -> listOf("#gctu-announcements", "#computing-cis", "#engineering")
+        com.campusmesh.android.data.AppMode.ABEKA_CAMPUS -> listOf("#gctu-announcements", "#abeka-it-business")
+        com.campusmesh.android.data.AppMode.GENERAL_MESH -> listOf("#general-mesh")
+    }
+    val alreadyJoined = viewModel.joinedChannels.value
+    presets.forEach { channel ->
+        if (channel !in alreadyJoined) {
+            viewModel.joinChannel(channel)
+        }
     }
 }
 
@@ -522,7 +569,8 @@ private fun ChatDialogs(
         LocationChannelsSheet(
             isPresented = showLocationChannelsSheet,
             onDismiss = onLocationChannelsSheetDismiss,
-            viewModel = viewModel
+            viewModel = viewModel,
+            onOpenMap = { viewModel.openMap() }
         )
     }
     

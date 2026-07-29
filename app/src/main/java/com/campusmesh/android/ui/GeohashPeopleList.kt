@@ -70,7 +70,7 @@ fun GeohashPeopleList(
             Text(
                 text = stringResource(R.string.geohash_people_header),
                 style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.Bold
                 ),
                 color = colorScheme.onSurface.copy(alpha = 0.6f)
@@ -82,7 +82,7 @@ fun GeohashPeopleList(
             Text(
                 text = stringResource(R.string.nobody_around),
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     fontSize = BASE_FONT_SIZE.sp
                 ),
                 color = colorScheme.onSurface.copy(alpha = 0.5f),
@@ -231,7 +231,7 @@ private fun GeohashPersonItem(
             Text(
                 text = baseName,
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     fontSize = BASE_FONT_SIZE.sp,
                     fontWeight = if (isMe) FontWeight.Bold else FontWeight.Normal
                 ),
@@ -245,7 +245,7 @@ private fun GeohashPersonItem(
                 Text(
                     text = suffix,
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FontFamily.SansSerif,
                         fontSize = BASE_FONT_SIZE.sp
                     ),
                     color = baseColor.copy(alpha = 0.6f)
@@ -257,7 +257,7 @@ private fun GeohashPersonItem(
                 Text(
                     text = stringResource(R.string.you_suffix),
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FontFamily.SansSerif,
                         fontSize = BASE_FONT_SIZE.sp
                     ),
                     color = baseColor

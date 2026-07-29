@@ -400,6 +400,16 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
             val isFileTransfer = com.campusmesh.android.protocol.MessageType.fromValue(packet.type) == com.campusmesh.android.protocol.MessageType.FILE_TRANSFER
             val file = com.campusmesh.android.model.BitchatFilePacket.decode(packet.payload)
             if (file != null) {
+                // Chunked-transfer sub-messages (init/chunk/resume-request) are ordinary
+                // BitchatFilePackets with a reserved mimeType marker -- hand them to
+                // FileChunkBus instead of treating them as a real incoming file.
+                val chunkMsg = com.campusmesh.android.model.FileChunkProtocol.tryParse(file)
+                if (chunkMsg != null) {
+                    com.campusmesh.android.mesh.FileChunkBus.emit(
+                        com.campusmesh.android.mesh.IncomingChunkEvent(peerID = peerID, isPrivate = false, parsed = chunkMsg)
+                    )
+                    return
+                }
                 if (isFileTransfer) {
                     Log.d(TAG, "📥 FILE_TRANSFER decode success (broadcast): name='${file.fileName}', size=${file.fileSize}, mime='${file.mimeType}', from=${peerID.take(8)}")
                 }
@@ -479,6 +489,16 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
             val isFileTransfer = com.campusmesh.android.protocol.MessageType.fromValue(packet.type) == com.campusmesh.android.protocol.MessageType.FILE_TRANSFER
             val file = com.campusmesh.android.model.BitchatFilePacket.decode(packet.payload)
             if (file != null) {
+                // Chunked-transfer sub-messages (init/chunk/resume-request) are ordinary
+                // BitchatFilePackets with a reserved mimeType marker -- hand them to
+                // FileChunkBus instead of treating them as a real incoming file.
+                val chunkMsg = com.campusmesh.android.model.FileChunkProtocol.tryParse(file)
+                if (chunkMsg != null) {
+                    com.campusmesh.android.mesh.FileChunkBus.emit(
+                        com.campusmesh.android.mesh.IncomingChunkEvent(peerID = peerID, isPrivate = true, parsed = chunkMsg)
+                    )
+                    return
+                }
                 if (isFileTransfer) {
                     Log.d(TAG, "📥 FILE_TRANSFER decode success (private): name='${file.fileName}', size=${file.fileSize}, mime='${file.mimeType}', from=${peerID.take(8)}")
                 }

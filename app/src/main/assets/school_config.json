@@ -6,14 +6,14 @@
   "campuses": [
     {
       "name": "Main Campus (Tesano)",
-      "lat": 5.6115,
-      "lon": -0.2290,
+      "lat": 5.5961352,
+      "lon": -0.2234766,
       "radius_meters": 300
     },
     {
       "name": "Abeka Campus (SITB)",
-      "lat": 5.6025,
-      "lon": -0.2425,
+      "lat": 5.5995349,
+      "lon": -0.2388291,
       "radius_meters": 200
     }
   ]

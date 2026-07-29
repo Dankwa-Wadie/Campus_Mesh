@@ -31,3 +31,14 @@
 -keepclassmembers class * implements android.location.LocationListener {
     public <methods>;
 }
+
+# Netty, Ktor, Log4j, Reactor, Jetty, and Java management dontwarn rules
+-dontwarn io.netty.**
+-dontwarn io.ktor.**
+-dontwarn org.apache.log4j.**
+-dontwarn org.apache.logging.log4j.**
+-dontwarn reactor.blockhound.**
+-dontwarn org.eclipse.jetty.npn.**
+-dontwarn org.slf4j.impl.**
+-dontwarn java.lang.management.**
+

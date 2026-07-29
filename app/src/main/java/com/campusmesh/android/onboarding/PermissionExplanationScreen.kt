@@ -68,7 +68,7 @@ fun PermissionExplanationScreen(
                     Text(
                         text = stringResource(R.string.app_name),
                         style = MaterialTheme.typography.headlineLarge.copy(
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.Bold,
                             fontSize = 32.sp
                         ),
@@ -79,7 +79,7 @@ fun PermissionExplanationScreen(
                 Text(
                     text = stringResource(R.string.about_tagline),
                     fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     color = colorScheme.onBackground.copy(alpha = 0.7f)
                 )
             }
@@ -117,7 +117,7 @@ fun PermissionExplanationScreen(
                             Text(
                                 text = stringResource(R.string.privacy_bullets),
                                 style = MaterialTheme.typography.bodySmall,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = FontFamily.SansSerif,
                                 color = colorScheme.onBackground.copy(alpha = 0.8f)
                             )
                         }
@@ -164,7 +164,7 @@ fun PermissionExplanationScreen(
                 Text(
                     text = stringResource(R.string.grant_permissions),
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FontFamily.SansSerif,
                         fontWeight = FontWeight.Bold
                     ),
                     modifier = Modifier.padding(vertical = 4.dp)

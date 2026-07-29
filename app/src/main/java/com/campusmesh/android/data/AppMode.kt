@@ -3,8 +3,8 @@ package com.campusmesh.android.data
 /**
  * Represents the current operational mode of Campus Mesh.
  *
- * - MAIN_CAMPUS: Active at GCTU Tesano campus (lat: 5.6115, lon: -0.2290)
- * - ABEKA_CAMPUS: Active at GCTU Abeka/SITB campus (lat: 5.6025, lon: -0.2425)
+ * - MAIN_CAMPUS: Active at GCTU Tesano campus (lat: 5.5961352, lon: -0.2234766)
+ * - ABEKA_CAMPUS: Active at GCTU Abeka/SITB campus (lat: 5.5995349, lon: -0.2388291)
  * - GENERAL_MESH: Off-campus, worldwide P2P mesh mode
  */
 enum class AppMode(val displayName: String, val channelSuffix: String) {

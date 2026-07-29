@@ -80,7 +80,7 @@ fun BitchatSheetTitle(text: String) {
         text = text,
         style = MaterialTheme.typography.titleMedium.copy(
             fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace
+            fontFamily = FontFamily.SansSerif
         )
     )
 }

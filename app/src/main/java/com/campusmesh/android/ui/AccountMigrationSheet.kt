@@ -23,7 +23,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.set
 import com.campusmesh.android.R
-import com.campusmesh.android.core.ui.component.button.CloseButton
 import com.campusmesh.android.core.ui.component.sheet.BitchatBottomSheet
 import com.campusmesh.android.core.ui.component.sheet.BitchatSheetTitle
 import com.campusmesh.android.core.ui.component.sheet.BitchatSheetTopBar
@@ -132,10 +131,7 @@ fun AccountMigrationSheet(
                 // TopBar with close button
                 BitchatSheetTopBar(
                     title = {},
-                    onClose = onDismiss,
-                    actions = {
-                        CloseButton(onClick = onDismiss)
-                    }
+                    onClose = onDismiss
                 )
             }
         }

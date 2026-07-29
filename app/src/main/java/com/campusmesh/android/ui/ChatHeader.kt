@@ -133,7 +133,7 @@ fun NicknameEditor(
             onValueChange = onValueChange,
             textStyle = MaterialTheme.typography.bodyMedium.copy(
                 color = colorScheme.primary,
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.SansSerif
             ),
             cursorBrush = SolidColor(colorScheme.primary),
             singleLine = true,
@@ -226,7 +226,8 @@ fun ChatHeaderContent(
     onTripleClick: () -> Unit,
     onShowAppInfo: () -> Unit,
     onLocationChannelsClick: () -> Unit,
-    onLocationNotesClick: () -> Unit
+    onLocationNotesClick: () -> Unit,
+    onInvitePeersClick: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
 
@@ -250,6 +251,7 @@ fun ChatHeaderContent(
                 onSidebarClick = onSidebarClick,
                 onLocationChannelsClick = onLocationChannelsClick,
                 onLocationNotesClick = onLocationNotesClick,
+                onInvitePeersClick = onInvitePeersClick,
                 viewModel = viewModel
             )
         }
@@ -331,6 +333,7 @@ private fun MainHeader(
     onSidebarClick: () -> Unit,
     onLocationChannelsClick: () -> Unit,
     onLocationNotesClick: () -> Unit,
+    onInvitePeersClick: () -> Unit,
     viewModel: ChatViewModel
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -393,6 +396,17 @@ private fun MainHeader(
                 )
             }
 
+            // Invite Nearby Peers (opens the Wi-Fi + PWA gateway QR) - old-brand green replaced
+            // with the real GCTU primary blue (Phase 8 regression/polish pass)
+            Icon(
+                imageVector = Icons.Filled.WifiTethering,
+                contentDescription = stringResource(R.string.cd_invite_nearby_peers),
+                modifier = Modifier
+                    .size(18.dp)
+                    .clickable { onInvitePeersClick() },
+                tint = MaterialTheme.colorScheme.primary
+            )
+
             // Location channels button (matching iOS implementation) and bookmark grouped tightly
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 4.dp)) {
                 LocationChannelsButton(
@@ -417,7 +431,10 @@ private fun MainHeader(
                         Icon(
                             imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                             contentDescription = stringResource(R.string.cd_toggle_bookmark),
-                            tint = if (isBookmarked) Color(0xFF00C851) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                            // Old-brand green replaced with the gold accent - matches the design
+                            // system's use of gold for "highlighted/starred" state elsewhere
+                            // (unread badges, role pills).
+                            tint = if (isBookmarked) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -490,7 +507,7 @@ private fun LocationChannelsButton(
             Text(
                 text = badgeText,
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = FontFamily.SansSerif
                 ),
                 color = badgeColor,
                 maxLines = 1

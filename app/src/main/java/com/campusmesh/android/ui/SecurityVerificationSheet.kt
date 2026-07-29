@@ -70,7 +70,10 @@ fun SecurityVerificationSheet(
     val peerSessionStates by viewModel.peerSessionStates.collectAsStateWithLifecycle()
 
     val isDark = isSystemInDarkTheme()
-    val accent = if (isDark) Color.Green else Color(0xFF008000)
+    // Was hardcoded terminal green (Color.Green / 0xFF008000) - now the brand blue, and reads
+    // from MaterialTheme so it also respects the app's manual light/dark override
+    // (ThemePreferenceManager), not just the system setting like the old isDark check did.
+    val accent = MaterialTheme.colorScheme.primary
     val boxColor = if (isDark) Color.White.copy(alpha = 0.06f) else Color.Black.copy(alpha = 0.06f)
     val peerHexRegex = remember { Regex("^[0-9a-fA-F]{16}$") }
 
@@ -92,7 +95,7 @@ fun SecurityVerificationSheet(
             if (peerID == null) {
                 Text(
                     text = stringResource(R.string.fingerprint_no_peer),
-                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.SansSerif),
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
             } else {
@@ -155,7 +158,7 @@ private fun SecurityVerificationHeader(
         Text(
             text = stringResource(R.string.security_verification_title),
             style = MaterialTheme.typography.titleSmall.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold
             ),
             color = accent
@@ -219,7 +222,7 @@ private fun SecurityStatusCard(
             Text(
                 text = displayName,
                 style = MaterialTheme.typography.titleMedium.copy(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.Bold
                 ),
                 color = accent
@@ -227,7 +230,7 @@ private fun SecurityStatusCard(
             Text(
                 text = statusInfo.text,
                 style = MaterialTheme.typography.bodySmall.copy(
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = FontFamily.SansSerif
                 ),
                 color = accent.copy(alpha = 0.8f)
             )
@@ -257,7 +260,7 @@ private fun SecurityVerificationActions(
         ) {
             Text(
                 text = stringResource(R.string.fingerprint_start_handshake),
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontSize = 12.sp
             )
         }
@@ -273,7 +276,7 @@ private fun SecurityVerificationActions(
         Text(
             text = stringResource(R.string.fingerprint_verified_message),
             style = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.SansSerif
             ),
             color = accent.copy(alpha = 0.7f),
             modifier = Modifier.fillMaxWidth(),
@@ -289,7 +292,7 @@ private fun SecurityVerificationActions(
         ) {
             Text(
                 text = stringResource(R.string.verify_remove),
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontSize = 12.sp
             )
         }
@@ -303,7 +306,7 @@ private fun SecurityVerificationActions(
         Text(
             text = stringResource(R.string.fingerprint_not_verified_message_fmt, displayName),
             style = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.SansSerif
             ),
             color = accent.copy(alpha = 0.7f),
             modifier = Modifier.fillMaxWidth(),
@@ -320,7 +323,7 @@ private fun SecurityVerificationActions(
             ) {
                 Text(
                     text = stringResource(R.string.fingerprint_mark_verified),
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     fontSize = 12.sp
                 )
             }
@@ -349,7 +352,7 @@ private fun VerificationStatusRow(
         Text(
             text = text,
             style = MaterialTheme.typography.bodyMedium.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold
             ),
             color = textTint
@@ -375,7 +378,7 @@ private fun FingerprintBlock(
         Text(
             text = title,
             style = MaterialTheme.typography.labelSmall.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold
             ),
             color = accent.copy(alpha = 0.8f)
@@ -385,7 +388,7 @@ private fun FingerprintBlock(
                 Text(
                     text = formatFingerprint(fingerprint),
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FontFamily.SansSerif,
                         fontSize = 14.sp
                     ),
                     color = accent,
@@ -417,7 +420,7 @@ private fun FingerprintBlock(
         } else {
             Text(
                 text = stringResource(R.string.fingerprint_pending),
-                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.SansSerif),
                 color = Color(0xFFFF9500),
                 modifier = Modifier.padding(16.dp)
             )

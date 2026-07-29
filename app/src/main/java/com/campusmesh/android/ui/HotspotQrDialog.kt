@@ -31,7 +31,10 @@ import com.google.zxing.qrcode.QRCodeWriter
  * Displayed when the user taps the "Invite Nearby Peers" / "Share Gateway" button
  * in the app header. Shows a clean, scannable QR code combining:
  * 1. Wi-Fi credentials (SSID + Password) to join the local-only hotspot.
- * 2. mDNS URL to the Ktor PWA server: http://campusmesh.local:8080
+ * 2. The Ktor PWA server URL, shown as text below the QR (WIFI: QR payloads only carry network
+ *    credentials, not URLs). Uses the device's actual reachable IP on the hotspot interface —
+ *    NsdManager's DNS-SD service registration does not publish a custom "campusmesh.local" host
+ *    record, so that hostname is not guaranteed to resolve in Safari/Chrome.
  *
  * The QR payload uses the standard Wi-Fi provisioning format that is
  * automatically understood by iPhone Camera and Android Quick Settings:
@@ -46,6 +49,9 @@ fun HotspotQrDialog(
     val ssid     = WifiHotspotManager.hotspotSsid ?: "Campus-Mesh-GCTU"
     val password = WifiHotspotManager.hotspotPassword ?: "campusmesh"
     val hotspotActive = WifiHotspotManager.isHotspotActive
+    // NsdManager registers a discoverable *service*, not a "campusmesh.local" host record, so
+    // that hostname isn't guaranteed to resolve. The gateway IP always works once joined.
+    val gatewayUrl = WifiHotspotManager.hotspotGatewayIp?.let { "http://$it:8080" } ?: "http://campusmesh.local:8080"
 
     // Combined QR payload: WPA join + mDNS link
     val qrPayload = buildQrPayload(ssid, password)
@@ -143,7 +149,7 @@ fun HotspotQrDialog(
                         Spacer(modifier = Modifier.height(4.dp))
                         InfoRow(label = "Password", value = password)
                         Spacer(modifier = Modifier.height(4.dp))
-                        InfoRow(label = "PWA URL", value = "http://campusmesh.local:8080")
+                        InfoRow(label = "PWA URL", value = gatewayUrl)
                     } else {
                         Text(
                             text = "Starting local hotspot… Scan once the code appears.",
