@@ -1,15 +1,15 @@
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/188c42f8-d249-4a72-b27a-e2b4f10a00a8" alt="Campus Mesh / bitchat Android Logo" width="480">
+  <img src="https://github.com/user-attachments/assets/188c42f8-d249-4a72-b27a-e2b4f10a00a8" alt="Campus Mesh Logo" width="480">
 </p>
 
-<h1 align="center">Campus Mesh (bitchat for Android)</h1>
+<h1 align="center">Campus Mesh</h1>
 
 <p align="center">
   <strong>Decentralized, off-grid peer-to-peer messaging built for privacy, censorship resistance, and zero-server communications.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/permissionlesstech/bitchat-android/releases"><img src="https://img.shields.io/github/v/release/permissionlesstech/bitchat-android?style=for-the-badge&color=00FF66" alt="Latest Release"></a>
+  <a href="https://github.com/Dankwa-Wadie/Campus_Mesh/releases"><img src="https://img.shields.io/github/v/release/Dankwa-Wadie/Campus_Mesh?style=for-the-badge&color=00FF66" alt="Latest Release"></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-Unlicense%2FPublic_Domain-blue.svg?style=for-the-badge" alt="License"></a>
   <a href="https://developer.android.com"><img src="https://img.shields.io/badge/Android-API_26%2B_(8.0%2B)-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android Min API"></a>
   <a href="https://kotlinlang.org"><img src="https://img.shields.io/badge/Kotlin-2.2-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin Version"></a>
@@ -40,11 +40,11 @@
 
 ## Overview
 
-**Campus Mesh** (bitchat Android) is a privacy-first, off-grid communication application designed to operate without central servers, cell towers, or internet infrastructure. Utilizing **Bluetooth Low Energy (BLE)** multi-hop mesh networking, devices discover each other automatically, forming an ad-hoc decentralized network that routes encrypted text, voice, and media across distant peers.
+**Campus Mesh** is a privacy-first, off-grid communication application designed to operate without central servers, cell towers, or internet infrastructure. Utilizing **Bluetooth Low Energy (BLE)** multi-hop mesh networking, devices discover each other automatically, forming an ad-hoc decentralized network that routes encrypted text, voice, and media across distant peers.
 
 When an internet connection is present, Campus Mesh seamlessly expands its capabilities through **Geohash channels**, **Nostr protocol relays**, and a built-in **Tor/Arti Rust bridge** for anonymous, serverless wide-area communication.
 
-This client is 100% protocol-compatible with the original [bitchat iOS client](https://github.com/jackjackbits/bitchat), enabling seamless cross-platform communication between Android and iOS devices in the same physical vicinity.
+This client enables seamless cross-platform communication between Android and iOS devices in the same physical vicinity.
 
 ---
 
@@ -171,7 +171,7 @@ Campus Mesh features an integrated command parser supporting standard IRC-style 
 ## Installation
 
 ### Option 1: GitHub Releases (Direct APK)
-Download the latest APK directly from our [GitHub Releases Page](https://github.com/permissionlesstech/bitchat-android/releases).
+Download the latest APK directly from our [GitHub Releases Page](https://github.com/Dankwa-Wadie/Campus_Mesh/releases).
 
 We publish architecture-optimized APKs for best performance and smaller download size:
 - **`app-arm64-v8a-release.apk`**: Recommended for modern Android smartphones.
@@ -196,8 +196,8 @@ Available on Google Play:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/permissionlesstech/bitchat-android.git
-   cd bitchat-android
+   git clone https://github.com/Dankwa-Wadie/Campus_Mesh.git
+   cd Campus_Mesh
    ```
 
 2. **Build Debug APK:**
@@ -252,7 +252,7 @@ Campus Mesh requests only essential permissions required for hardware mesh commu
 
 ## Cross-Platform Compatibility
 
-Campus Mesh Android maintains **100% binary wire-protocol parity** with the [bitchat iOS app](https://github.com/jackjackbits/bitchat):
+Campus Mesh Android maintains **100% binary wire-protocol parity** with compatible iOS applications:
 
 - **Header Parity**: Standard 13-byte header layout with identical field offsets and bit flags.
 - **Cross-Platform Mesh Routing**: Android and iOS devices act seamlessly as transit nodes for each other's packets.

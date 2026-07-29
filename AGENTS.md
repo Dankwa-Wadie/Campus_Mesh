@@ -1,9 +1,9 @@
-# Bitchat Android - Agent Guide
+# Campus Mesh Android - Agent Guide
 
-This document provides context, architectural insights, and development standards for AI agents working on the Bitchat Android codebase.
+This document provides context, architectural insights, and development standards for AI agents working on the Campus Mesh Android codebase.
 
 ## 1. Project Overview
-**Bitchat** is a decentralized, off-grid communication application focused on privacy and censorship resistance. It utilizes mesh networking (primarily Bluetooth LE and Tor/Arti) to enable peer-to-peer messaging without centralized servers.
+**Campus Mesh** is a decentralized, off-grid communication application focused on privacy and censorship resistance. It utilizes mesh networking (primarily Bluetooth LE and Tor/Arti) to enable peer-to-peer messaging without centralized servers.
 
 **Key Technologies:**
 - **Language:** Kotlin (JVM Target 1.8)

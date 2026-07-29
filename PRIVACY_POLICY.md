@@ -1,10 +1,10 @@
-# bitchat Privacy Policy
+# Campus Mesh Privacy Policy
 
-*Last updated: January 2025*
+*Last updated: July 2026*
 
 ## Our Commitment
 
-bitchat is designed with privacy as its foundation. We believe private communication is a fundamental human right. This policy explains how bitchat protects your privacy.
+Campus Mesh is designed with privacy as its foundation. We believe private communication is a fundamental human right. This policy explains how Campus Mesh protects your privacy.
 
 ## Summary
 
@@ -12,13 +12,13 @@ bitchat is designed with privacy as its foundation. We believe private communica
 
 - **No personal data collection** - We don't collect names, emails, or phone numbers
 - **No location data collection** - Location is accessed only for local processing (BLE/Geohash) and is never collected or sent to us
-- **Hybrid Functionality** - bitchat offers two modes of communication:
+- **Hybrid Functionality** - Campus Mesh offers two modes of communication:
   - **Bluetooth Mesh Chat**: This mode is completely offline, using peer-to-peer Bluetooth connections. It does not use any servers or internet connection.
   - **Geohash Chat**: This mode uses an internet connection to communicate with others in a specific geographic area. It relies on Nostr relays for message transport.
 - **No tracking** - We have no analytics, telemetry, or user tracking
 - **Open source** - You can verify these claims by reading our code
 
-## What Information bitchat Stores
+## What Information Campus Mesh Stores
 
 ### On Your Device Only
 
@@ -45,16 +45,16 @@ bitchat is designed with privacy as its foundation. We believe private communica
 
 ### Temporary Session Data
 
-During each session, bitchat temporarily maintains:
+During each session, Campus Mesh temporarily maintains:
 - Active peer connections (forgotten when app closes)
 - Routing information for message delivery
 - Cached messages for offline peers (12 hours max)
 
 ## What Information is Shared
 
-### With Other bitchat Users
+### With Other Campus Mesh Users
 
-When you use bitchat, nearby peers can see:
+When you use Campus Mesh, nearby peers can see:
 - Your chosen nickname
 - Your ephemeral public key (changes each session)
 - Messages you send to public rooms or directly to them
@@ -69,7 +69,7 @@ When you join a password-protected room:
 
 ## What We DON'T Do
 
-bitchat **never**:
+Campus Mesh **never**:
 - Collects personal information
 - Collects location history
 - Transmits any data to us (the developers)
@@ -97,11 +97,11 @@ You have complete control:
 
 ## Location Data & Permissions
 
-To provide the core functionality of bitchat, we access your device's location data. This access is necessary for the following specific purposes:
+To provide the core functionality of Campus Mesh, we access your device's location data. This access is necessary for the following specific purposes:
 
 ### 1. Bluetooth Low Energy (BLE) Scanning
 - **Why we need it:** The Android operating system requires Location permission to scan for nearby Bluetooth LE devices (especially on Android 11 and lower). This is a system-level requirement because Bluetooth scans can theoretically be used to derive location.
-- **How we use it:** We use this permission strictly to discover other bitchat peers nearby for the "Bluetooth Mesh Chat" mode.
+- **How we use it:** We use this permission strictly to discover other Campus Mesh peers nearby for the "Bluetooth Mesh Chat" mode.
 - **Privacy protection:** We do not record or store your location during this process. The data is processed instantaneously by the Android system to facilitate the connection.
 
 ### 2. Geohash Chat Functionality
@@ -116,7 +116,7 @@ To provide the core functionality of bitchat, we access your device's location d
 
 ## Children's Privacy
 
-bitchat does not knowingly collect information from children. The app has no age verification because it collects no personal information from anyone.
+Campus Mesh does not knowingly collect information from children. The app has no age verification because it collects no personal information from anyone.
 
 ## Data Retention
 
@@ -142,15 +142,15 @@ If we update this policy:
 
 ## Contact
 
-bitchat is an open source project. For privacy questions:
-- Review our code: https://github.com/yourusername/bitchat
+Campus Mesh is an open source project. For privacy questions:
+- Review our code: https://github.com/Dankwa-Wadie/Campus_Mesh
 - Open an issue on GitHub
 - Join the discussion in public rooms
 
 ## Philosophy
 
-Privacy isn't just a feature—it's the entire point. bitchat proves that modern communication doesn't require surrendering your privacy. No accounts, no servers, no surveillance. Just people talking freely.
+Privacy isn't just a feature—it's the entire point. Campus Mesh proves that modern communication doesn't require surrendering your privacy. No accounts, no servers, no surveillance. Just people talking freely.
 
 ---
 
-*This policy is released into the public domain under The Unlicense, just like bitchat itself.*
+*This policy is released into the public domain under The Unlicense, just like Campus Mesh itself.*
