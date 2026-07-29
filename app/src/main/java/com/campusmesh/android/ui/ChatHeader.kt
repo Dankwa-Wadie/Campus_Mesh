@@ -396,16 +396,9 @@ private fun MainHeader(
                 )
             }
 
-            // Invite Nearby Peers (opens the Wi-Fi + PWA gateway QR) - old-brand green replaced
-            // with the real GCTU primary blue (Phase 8 regression/polish pass)
-            Icon(
-                imageVector = Icons.Filled.WifiTethering,
-                contentDescription = stringResource(R.string.cd_invite_nearby_peers),
-                modifier = Modifier
-                    .size(18.dp)
-                    .clickable { onInvitePeersClick() },
-                tint = MaterialTheme.colorScheme.primary
-            )
+            // Invite Nearby Peers QR removed - onboarding/distribution is APK-only now, no more
+            // Wi-Fi hotspot + QR join flow (see WifiHotspotManager.kt/HotspotQrDialog.kt, left in
+            // place but unreachable from the UI rather than deleted outright).
 
             // Location channels button (matching iOS implementation) and bookmark grouped tightly
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 4.dp)) {

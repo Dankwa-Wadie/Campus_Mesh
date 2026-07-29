@@ -36,8 +36,10 @@ import com.google.zxing.qrcode.QRCodeWriter
  *    NsdManager's DNS-SD service registration does not publish a custom "campusmesh.local" host
  *    record, so that hostname is not guaranteed to resolve in Safari/Chrome.
  *
- * The QR payload uses the standard Wi-Fi provisioning format that is
- * automatically understood by iPhone Camera and Android Quick Settings:
+ * Android only for now (iPhone/PWA gateway support had connection issues that weren't worth
+ * continuing to chase - see AGENTS.md/session notes). The QR payload uses the standard Wi-Fi
+ * provisioning format understood by Android's Quick Settings Wi-Fi scanner and most camera/QR
+ * apps:
  *   WIFI:S:<SSID>;T:WPA;P:<PASSWORD>;;
  *
  * @param onDismiss  Called when the user taps "Close" or swipes down to dismiss.
@@ -163,7 +165,7 @@ fun HotspotQrDialog(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "Point your phone camera at this QR code. No app download required for iPhones.",
+                    text = "Android only for now - scan this from another Android phone's camera or QR scanner to join.",
                     color = Color(0xFF9E9EC8),
                     fontSize = 11.sp,
                     textAlign = TextAlign.Center,

@@ -34,6 +34,13 @@ object WifiHotspotManager {
     @Volatile var isHotspotActive: Boolean = false
         private set
 
+    // True once onFailed() has fired and no successful onStarted() has happened since. Lets the
+    // UI distinguish "still starting" from "actually failed" instead of showing a QR built from
+    // placeholder fallback credentials that don't correspond to any real running network - which
+    // is exactly what made past failures look like a working QR that silently never connects.
+    @Volatile var hotspotFailed: Boolean = false
+        private set
+
     // Real, reachable IP of this device on the hotspot interface. NsdManager's registerService()
     // below publishes a DNS-SD *service* record, not a custom "campusmesh.local" *host* A record —
     // Android's public API doesn't let an app claim an arbitrary mDNS hostname, so
@@ -47,10 +54,12 @@ object WifiHotspotManager {
             Log.d(TAG, "Hotspot is already active.")
             return
         }
+        hotspotFailed = false
 
         val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         if (wifiManager == null) {
             Log.e(TAG, "WifiManager is not available.")
+            hotspotFailed = true
             return
         }
 
@@ -64,7 +73,14 @@ object WifiHotspotManager {
 
                         val config = reservation?.wifiConfiguration
                         if (config != null) {
-                            hotspotSsid = config.SSID
+                            // WifiConfiguration.SSID returns the SSID wrapped in literal double
+                            // quotes for UTF-8 names (e.g. `"Campus-Mesh-a1b2"`, quotes included in
+                            // the string) - a well-known Android API quirk. Left unstripped, this
+                            // was baked straight into the WIFI: QR payload below, so scanners tried
+                            // to join a network literally named `"Campus-Mesh-a1b2"` (with quote
+                            // characters) instead of the real broadcast SSID, and never connected -
+                            // this was the actual bug behind failed QR joins on any scanning device.
+                            hotspotSsid = config.SSID?.removeSurrounding("\"")
                             hotspotPassword = config.preSharedKey
                             Log.i(TAG, "🔥 Local Hotspot started successfully. SSID: $hotspotSsid, PSK: $hotspotPassword")
                         } else {

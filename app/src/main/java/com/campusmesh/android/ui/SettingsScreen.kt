@@ -24,7 +24,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -56,9 +55,11 @@ import com.campusmesh.android.ui.theme.ThemePreferenceManager
 
 /**
  * Settings & Profile - new consolidated screen (docs/UI_REDESIGN_IMPLEMENTATION_PLAN.md Phase 5).
- * Consolidates nickname editing, avatar picker, role toggle, and dark-theme toggle, which were
- * previously scattered (AboutSheet.kt, wherever ThemePreferenceManager was surfaced). Deliberately
- * does NOT include Ghost Mode - that lives on the Map screen per the earlier design decision.
+ * Consolidates nickname editing, avatar picker, and dark-theme toggle, which were previously
+ * scattered (AboutSheet.kt, wherever ThemePreferenceManager was surfaced). The role pill in the
+ * profile card is read-only display only - the separate Student/Lecturer editable toggle row was
+ * removed per user request. Deliberately does NOT include Ghost Mode - that lives on the Map
+ * screen per the earlier design decision.
  *
  * Reached from a gear icon in the chat-list header; back returns to the chat list
  * (ChatViewModel.openSettings/closeSettings).
@@ -243,53 +244,6 @@ fun SettingsScreen(
                 }
             }
 
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.School,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "Role",
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(start = 10.dp),
-                        fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.5.sp,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    listOf("Student", "Lecturer").forEach { option ->
-                        val selected = role == option
-                        Box(
-                            modifier = Modifier
-                                .padding(start = 6.dp)
-                                .background(
-                                    if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                    RoundedCornerShape(999.dp)
-                                )
-                                .clickable { viewModel.setRole(option) }
-                                .padding(horizontal = 10.dp, vertical = 5.dp)
-                        ) {
-                            Text(
-                                text = option,
-                                fontFamily = FontFamily.SansSerif,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 11.sp,
-                                color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-
             item { SectionLabel("Appearance") }
 
             item {
@@ -362,9 +316,171 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            item { SectionLabel("App updates") }
+
+            item {
+                val updateStatus by com.campusmesh.android.net.GithubUpdateChecker.statusFlow.collectAsStateWithLifecycle()
+                val installedVersion = remember { com.campusmesh.android.net.GithubUpdateChecker.getInstalledVersionName(context) }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Edit,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 10.dp)
+                        ) {
+                            Text(
+                                text = "Installed Version",
+                                fontFamily = FontFamily.SansSerif,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.5.sp,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Text(
+                                text = "v$installedVersion (Campus Mesh)",
+                                fontFamily = FontFamily.SansSerif,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                com.campusmesh.android.net.GithubUpdateChecker.checkForUpdates(context, force = true)
+                            }
+                        ) {
+                            Text(
+                                text = if (updateStatus is com.campusmesh.android.net.UpdateStatus.Checking) "Checking..." else "Check now",
+                                fontFamily = FontFamily.SansSerif,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    when (val status = updateStatus) {
+                        is com.campusmesh.android.net.UpdateStatus.UpdateAvailable -> {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 8.dp)
+                                    .fillMaxWidth()
+                                    .background(
+                                        MaterialTheme.colorScheme.primaryContainer,
+                                        RoundedCornerShape(12.dp)
+                                    )
+                                    .padding(12.dp)
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "🚀 New Version Available: v${status.latestVersion}",
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Text(
+                                        text = status.releaseNotes.take(150),
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontSize = 11.5.sp,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                                        modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                                    )
+                                    androidx.compose.material3.Button(
+                                        onClick = {
+                                            com.campusmesh.android.net.GithubUpdateChecker.downloadAndInstall(
+                                                context = context,
+                                                downloadUrl = status.downloadUrl,
+                                                apkFileName = status.apkFileName
+                                            )
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "Download & Install Update",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        is com.campusmesh.android.net.UpdateStatus.Downloading -> {
+                            Column(modifier = Modifier.padding(top = 8.dp)) {
+                                Text(
+                                    text = "Downloading update... ${status.progressPercent}%",
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontSize = 11.5.sp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                androidx.compose.material3.LinearProgressIndicator(
+                                    progress = { status.progressPercent / 100f },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 6.dp)
+                                )
+                            }
+                        }
+                        is com.campusmesh.android.net.UpdateStatus.ReadyToInstall -> {
+                            androidx.compose.material3.Button(
+                                onClick = {
+                                    val intent = com.campusmesh.android.net.OtaUpdateManager(context).buildInstallIntent(status.apkFile)
+                                    context.startActivity(intent)
+                                },
+                                modifier = Modifier
+                                    .padding(top = 8.dp)
+                                    .fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = "Tap to Launch Installer",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                        is com.campusmesh.android.net.UpdateStatus.UpToDate -> {
+                            Text(
+                                text = "✅ App is up to date",
+                                fontFamily = FontFamily.SansSerif,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        is com.campusmesh.android.net.UpdateStatus.Error -> {
+                            Text(
+                                text = "Unable to check updates: ${status.message}",
+                                fontFamily = FontFamily.SansSerif,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        else -> {}
+                    }
+                }
+            }
         }
     }
 }
+
 
 @Composable
 private fun SectionLabel(text: String) {

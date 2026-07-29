@@ -59,7 +59,11 @@ class CampusMeshApplication : Application() {
         // Initialize mesh service preferences
         try { com.campusmesh.android.service.MeshServicePreferences.init(this) } catch (_: Exception) { }
 
+        // Initialize GitHub update checker for periodic online version comparisons
+        try { com.campusmesh.android.net.GithubUpdateChecker.init(this) } catch (_: Exception) { }
+
         // Hydrate Ghost Mode (map location broadcast suppression) from persisted preference
+
         try { com.campusmesh.android.onboarding.GhostModePreferenceManager.hydrate(this) } catch (_: Exception) { }
 
         // Proactively start the foreground service to keep mesh alive
