@@ -30,6 +30,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
 
+import com.campusmesh.android.config.ConfigLoader
+
 /**
  * Data structures for GitHub Release API responses.
  */
@@ -56,9 +58,12 @@ sealed class UpdateStatus {
     object Checking : UpdateStatus()
     data class UpdateAvailable(
         val latestVersion: String,
+        val currentVersion: String,
         val releaseNotes: String,
         val downloadUrl: String,
-        val apkFileName: String
+        val apkFileName: String,
+        val apkSizeBytes: Long = 0L,
+        val publishedAt: String? = null
     ) : UpdateStatus()
     data class UpToDate(val currentVersion: String) : UpdateStatus()
     data class Downloading(val progressPercent: Int) : UpdateStatus()
@@ -72,9 +77,6 @@ sealed class UpdateStatus {
  */
 object GithubUpdateChecker {
     private const val TAG = "GithubUpdateChecker"
-    private const val REPO_OWNER = "Dankwa-Wadie"
-    private const val REPO_NAME = "Campus_Mesh"
-    private const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
 
     private const val PREFS_NAME = "campus_mesh_update_prefs"
     private const val KEY_LAST_CHECK_TIME = "last_check_timestamp"
@@ -130,11 +132,17 @@ object GithubUpdateChecker {
             return
         }
 
+        val currentVersion = getInstalledVersionName(context)
         _statusFlow.value = UpdateStatus.Checking
+
         scope.launch {
             try {
+                val config = ConfigLoader.load(context)
+                val apiUrl = config.githubReleasesApiUrl
+                Log.d(TAG, "Checking GitHub Releases at $apiUrl (Current running release: v$currentVersion)")
+
                 val request = Request.Builder()
-                    .url(GITHUB_LATEST_RELEASE_URL)
+                    .url(apiUrl)
                     .header("User-Agent", "CampusMeshApp-Android")
                     .header("Accept", "application/vnd.github.v3+json")
                     .build()
@@ -143,7 +151,7 @@ object GithubUpdateChecker {
                     if (!response.isSuccessful) {
                         if (response.code == 404) {
                             Log.i(TAG, "No releases found on GitHub repo yet.")
-                            _statusFlow.value = UpdateStatus.UpToDate(getInstalledVersionName(context))
+                            _statusFlow.value = UpdateStatus.UpToDate(currentVersion)
                         } else {
                             val err = "HTTP error ${response.code} fetching release info"
                             Log.e(TAG, err)
@@ -157,9 +165,8 @@ object GithubUpdateChecker {
 
                     val rawTag = release.tagName.trim()
                     val latestVersion = rawTag.removePrefix("v").removePrefix("V")
-                    val currentVersion = getInstalledVersionName(context)
 
-                    Log.i(TAG, "GitHub release check: Installed=$currentVersion, Latest=$latestVersion (tag=$rawTag)")
+                    Log.i(TAG, "GitHub release comparison: Running=$currentVersion vs GitHub Latest=$latestVersion (tag=$rawTag)")
 
                     // Record check timestamp
                     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -168,18 +175,24 @@ object GithubUpdateChecker {
                         .apply()
 
                     if (isNewerVersion(currentVersion, latestVersion)) {
-                        // Find suitable APK asset (prefer universal or release APK)
+                        // Find suitable APK asset (prefer universal or arm64 or release APK)
                         val apkAsset = release.assets?.firstOrNull { it.name.endsWith(".apk", ignoreCase = true) }
+                            ?: release.assets?.firstOrNull { it.name.contains("apk", ignoreCase = true) }
+
                         if (apkAsset != null) {
-                            val notes = release.body ?: "New release available!"
+                            val notes = release.body ?: "New release available on GitHub!"
                             _statusFlow.value = UpdateStatus.UpdateAvailable(
                                 latestVersion = latestVersion,
+                                currentVersion = currentVersion,
                                 releaseNotes = notes,
                                 downloadUrl = apkAsset.downloadUrl,
-                                apkFileName = apkAsset.name
+                                apkFileName = apkAsset.name,
+                                apkSizeBytes = apkAsset.size,
+                                publishedAt = release.publishedAt
                             )
                             showUpdateNotification(context, latestVersion)
                         } else {
+                            Log.w(TAG, "New release version $latestVersion exists but no APK asset found in release.")
                             _statusFlow.value = UpdateStatus.UpToDate(currentVersion)
                         }
                     } else {
@@ -194,13 +207,16 @@ object GithubUpdateChecker {
     }
 
     /**
-     * Compare two semantic version strings.
+     * Compare two semantic version strings (e.g. "1.0.0" vs "1.0.1").
      * Returns true if [latest] is strictly greater than [current].
      */
     fun isNewerVersion(current: String, latest: String): Boolean {
         try {
-            val currentParts = current.split("-")[0].split(".").map { it.toIntOrNull() ?: 0 }
-            val latestParts = latest.split("-")[0].split(".").map { it.toIntOrNull() ?: 0 }
+            val currentClean = current.trim().removePrefix("v").removePrefix("V")
+            val latestClean = latest.trim().removePrefix("v").removePrefix("V")
+
+            val currentParts = currentClean.split("-")[0].split(".").map { it.toIntOrNull() ?: 0 }
+            val latestParts = latestClean.split("-")[0].split(".").map { it.toIntOrNull() ?: 0 }
 
             val maxLen = maxOf(currentParts.size, latestParts.size)
             for (i in 0 until maxLen) {

@@ -360,11 +360,85 @@ class MainActivity : OrientationAwareActivity() {
                 val showSettings by chatViewModel.showSettings.collectAsState()
                 val showMap by chatViewModel.showMap.collectAsState()
                 val showChatList by chatViewModel.showChatList.collectAsState()
-                when {
-                    showSettings -> com.campusmesh.android.ui.SettingsScreen(viewModel = chatViewModel)
-                    showMap -> com.campusmesh.android.ui.MapScreen(viewModel = chatViewModel)
-                    showChatList -> com.campusmesh.android.ui.ChatListScreen(viewModel = chatViewModel)
-                    else -> ChatScreen(viewModel = chatViewModel)
+
+                val updateStatus by com.campusmesh.android.net.GithubUpdateChecker.statusFlow.collectAsState()
+                var isUpdatePromptDismissed by remember { mutableStateOf(false) }
+
+                androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
+                    when {
+                        showSettings -> com.campusmesh.android.ui.SettingsScreen(viewModel = chatViewModel)
+                        showMap -> com.campusmesh.android.ui.MapScreen(viewModel = chatViewModel)
+                        showChatList -> com.campusmesh.android.ui.ChatListScreen(viewModel = chatViewModel)
+                        else -> ChatScreen(viewModel = chatViewModel)
+                    }
+
+                    when (val status = updateStatus) {
+                        is com.campusmesh.android.net.UpdateStatus.UpdateAvailable -> {
+                            if (!isUpdatePromptDismissed) {
+                                com.campusmesh.android.ui.UpdatePromptDialog(
+                                    notice = com.campusmesh.android.data.AppUpdateNotice(
+                                        newVersionCode = 0,
+                                        newVersionName = "v${status.latestVersion} (Current: v${status.currentVersion})",
+                                        apkSizeBytes = status.apkSizeBytes,
+                                        sha256Hash = "",
+                                        senderPeerId = "GitHub",
+                                        githubReleaseUrl = status.downloadUrl
+                                    ),
+                                    isVisible = true,
+                                    isDownloading = false,
+                                    onInstall = {
+                                        com.campusmesh.android.net.GithubUpdateChecker.downloadAndInstall(
+                                            context = context,
+                                            downloadUrl = status.downloadUrl,
+                                            apkFileName = status.apkFileName
+                                        )
+                                    },
+                                    onDismiss = { isUpdatePromptDismissed = true }
+                                )
+                            }
+                        }
+                        is com.campusmesh.android.net.UpdateStatus.Downloading -> {
+                            if (!isUpdatePromptDismissed) {
+                                com.campusmesh.android.ui.UpdatePromptDialog(
+                                    notice = com.campusmesh.android.data.AppUpdateNotice(
+                                        newVersionCode = 0,
+                                        newVersionName = "Downloading update...",
+                                        apkSizeBytes = 0L,
+                                        sha256Hash = "",
+                                        senderPeerId = "GitHub",
+                                        githubReleaseUrl = null
+                                    ),
+                                    isVisible = true,
+                                    isDownloading = true,
+                                    progress = status.progressPercent / 100f,
+                                    onInstall = {},
+                                    onDismiss = { isUpdatePromptDismissed = true }
+                                )
+                            }
+                        }
+                        is com.campusmesh.android.net.UpdateStatus.ReadyToInstall -> {
+                            if (!isUpdatePromptDismissed) {
+                                com.campusmesh.android.ui.UpdatePromptDialog(
+                                    notice = com.campusmesh.android.data.AppUpdateNotice(
+                                        newVersionCode = 0,
+                                        newVersionName = "Ready to Install",
+                                        apkSizeBytes = 0L,
+                                        sha256Hash = "",
+                                        senderPeerId = "GitHub",
+                                        githubReleaseUrl = null
+                                    ),
+                                    isVisible = true,
+                                    isDownloading = false,
+                                    onInstall = {
+                                        val intent = com.campusmesh.android.net.OtaUpdateManager(context).buildInstallIntent(status.apkFile)
+                                        context.startActivity(intent)
+                                    },
+                                    onDismiss = { isUpdatePromptDismissed = true }
+                                )
+                            }
+                        }
+                        else -> {}
+                    }
                 }
             }
             

@@ -394,11 +394,20 @@ fun SettingsScreen(
                                         color = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
                                     Text(
-                                        text = status.releaseNotes.take(150),
+                                        text = "Running: v${status.currentVersion} → GitHub Latest: v${status.latestVersion}" +
+                                                if (status.apkSizeBytes > 0) " (${status.apkSizeBytes / (1024 * 1024)} MB)" else "",
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                    Text(
+                                        text = status.releaseNotes.take(200),
                                         fontFamily = FontFamily.SansSerif,
                                         fontSize = 11.5.sp,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                                        modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                                        modifier = Modifier.padding(top = 6.dp, bottom = 10.dp)
                                     )
                                     androidx.compose.material3.Button(
                                         onClick = {
@@ -457,7 +466,7 @@ fun SettingsScreen(
                         }
                         is com.campusmesh.android.net.UpdateStatus.UpToDate -> {
                             Text(
-                                text = "✅ App is up to date",
+                                text = "✅ Installed release (v${status.currentVersion}) is up to date with GitHub",
                                 fontFamily = FontFamily.SansSerif,
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,

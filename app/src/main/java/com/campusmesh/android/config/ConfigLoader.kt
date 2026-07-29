@@ -14,8 +14,8 @@ import com.google.gson.annotations.SerializedName
 data class SchoolConfig(
     @SerializedName("school_name")    val schoolName: String = "Ghana Communication Technology University",
     @SerializedName("school_short")   val schoolShort: String = "GCTU",
-    @SerializedName("github_repo_owner") val githubRepoOwner: String = "campus-mesh",
-    @SerializedName("github_repo_name")  val githubRepoName: String = "campus-mesh-android",
+    @SerializedName("github_repo_owner") val githubRepoOwner: String = "Dankwa-Wadie",
+    @SerializedName("github_repo_name")  val githubRepoName: String = "Campus_Mesh",
     @SerializedName("campuses")       val campuses: List<CampusLocation> = emptyList()
 ) {
     /** Constructs the GitHub Releases latest API URL from config fields. */
