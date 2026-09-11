@@ -112,6 +112,11 @@ class UnifiedMeshService(
         }
     }
 
+    // Calls only ever go over Wi-Fi Aware (see MeshService.sendCallSignal doc) - no BLE branch.
+    override fun sendCallSignal(peerID: String, data: ByteArray) {
+        wifiService()?.sendCallSignal(peerID, data)
+    }
+
     override fun sendFileBroadcast(file: BitchatFilePacket) {
         when {
             isBleEnabled() -> bluetooth.sendFileBroadcast(file)
@@ -321,6 +326,10 @@ class UnifiedMeshService(
 
     override fun didReceiveVerifyResponse(peerID: String, payload: ByteArray, timestampMs: Long) {
         delegate?.didReceiveVerifyResponse(peerID, payload, timestampMs)
+    }
+
+    override fun didReceiveCallSignal(peerID: String, payload: ByteArray, timestampMs: Long) {
+        delegate?.didReceiveCallSignal(peerID, payload, timestampMs)
     }
 
     override fun decryptChannelMessage(encryptedContent: ByteArray, channel: String): String? {

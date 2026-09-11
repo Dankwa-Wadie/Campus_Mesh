@@ -32,7 +32,6 @@ object MainCampusGeohash {
      */
     val SUB_CHANNELS: List<Pair<String, String>> = listOf(
         "#gctu-announcements" to "📢",
-        "#computing-cis" to "💻",
-        "#engineering" to "⚙️"
+        "#campus-mesh" to "📁"
     )
 }

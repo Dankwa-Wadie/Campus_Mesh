@@ -19,6 +19,7 @@ class NoiseSessionManager(
     }
     
     private val sessions = ConcurrentHashMap<String, NoiseSession>()
+    private val replacements = ConcurrentHashMap<String, NoiseSession>()
     
     // Callbacks
     var onSessionEstablished: ((String, ByteArray) -> Unit)? = null
@@ -46,6 +47,7 @@ class NoiseSessionManager(
      * Remove session for a peer
      */
     fun removeSession(peerID: String) {
+        replacements.remove(peerID)?.destroy()
         sessions[peerID]?.destroy()
         sessions.remove(peerID)
         Log.d(TAG, "Removed session for $peerID")
@@ -105,6 +107,10 @@ class NoiseSessionManager(
     fun processHandshakeMessage(peerID: String, message: ByteArray): ByteArray? {
         Log.d(TAG, "processHandshakeMessage($peerID, ${message.size} bytes)")
         
+        if (getSession(peerID)?.isEstablished() == true) {
+            return processReplacement(peerID, message)
+        }
+
         try {
             var session = getSession(peerID)
 
@@ -155,6 +161,38 @@ class NoiseSessionManager(
             Log.e(TAG, "Handshake failed with $peerID: ${e.message}")
             sessions.remove(peerID)
             onSessionFailed?.invoke(peerID, e)
+            throw e
+        }
+    }
+
+    @Synchronized
+    private fun processReplacement(peerID: String, message: ByteArray): ByteArray? {
+        val established = sessions[peerID] ?: return null
+        var candidate = replacements[peerID]
+        if (candidate != null && isHandshakeStale(candidate, System.currentTimeMillis())) {
+            replacements.remove(peerID)?.destroy()
+            candidate = null
+        }
+        if (candidate == null) {
+            if (message.size != HANDSHAKE_MESSAGE_1_SIZE) return null
+            candidate = NoiseSession(peerID, false, localStaticPrivateKey, localStaticPublicKey)
+            replacements[peerID] = candidate
+        }
+        try {
+            val response = candidate.processHandshakeMessage(message)
+            if (candidate.isEstablished()) {
+                val remoteKey = candidate.getRemoteStaticPublicKey()
+                require(remoteKey != null && remoteKey.contentEquals(established.getRemoteStaticPublicKey())) {
+                    "Replacement handshake changed peer identity"
+                }
+                sessions[peerID] = candidate
+                replacements.remove(peerID)
+                established.destroy()
+                onSessionEstablished?.invoke(peerID, remoteKey)
+            }
+            return response
+        } catch (e: Exception) {
+            replacements.remove(peerID)?.destroy()
             throw e
         }
     }
@@ -253,6 +291,8 @@ class NoiseSessionManager(
      * Shutdown manager and clean up all sessions
      */
     fun shutdown() {
+        replacements.values.forEach { it.destroy() }
+        replacements.clear()
         sessions.values.forEach { it.destroy() }
         sessions.clear()
         Log.d(TAG, "Noise session manager shut down")

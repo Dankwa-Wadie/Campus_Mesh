@@ -83,6 +83,7 @@
   <string name="cd_teleported">Teleported</string>
   <string name="cd_tor_status">Tor status</string>
   <string name="cd_connected_peers">Connected peers</string>
+  <string name="cd_start_voice_call">Start voice call</string>
   <string name="cd_invite_nearby_peers">Invite nearby peers</string>
   <string name="cd_geohash_participants">Geohash participants</string>
   <string name="cd_ready_for_handshake">Ready for handshake</string>

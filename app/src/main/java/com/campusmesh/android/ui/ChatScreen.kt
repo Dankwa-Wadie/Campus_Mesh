@@ -16,12 +16,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.campusmesh.android.model.BitchatMessage
@@ -45,6 +49,28 @@ fun ChatScreen(viewModel: ChatViewModel) {
     val nickname by viewModel.nickname.collectAsStateWithLifecycle()
     val selectedPrivatePeer by viewModel.selectedPrivateChatPeer.collectAsStateWithLifecycle()
     val currentChannel by viewModel.currentChannel.collectAsStateWithLifecycle()
+    val role by viewModel.role.collectAsStateWithLifecycle()
+    // #gctu-announcements is lecturer-only and soft-geofenced: students can read it, but posting is lecturer-only.
+    // Additionally, reading/posting requires being physically on either campus.
+    val currentAppMode by com.campusmesh.android.services.AppStateStore.currentAppMode.collectAsStateWithLifecycle()
+    val isUserOnCampus = currentAppMode == com.campusmesh.android.data.AppMode.MAIN_CAMPUS || currentAppMode == com.campusmesh.android.data.AppMode.ABEKA_CAMPUS
+    val isAnnouncementsLocked = currentChannel == "#gctu-announcements" && !isUserOnCampus
+    val isAnnouncementsReadOnly = currentChannel == "#gctu-announcements" && role != "Lecturer" && isUserOnCampus
+    
+    // #campus-mesh is soft-geofenced to Main Campus
+    val isCampusMeshLocked = currentChannel == "#campus-mesh" && currentAppMode != com.campusmesh.android.data.AppMode.MAIN_CAMPUS
+
+    // #abeka-it-business is soft-geofenced to Abeka Campus
+    val isAbekaItLocked = currentChannel == "#abeka-it-business" && currentAppMode != com.campusmesh.android.data.AppMode.ABEKA_CAMPUS
+
+    val isComposerReadOnly = isAnnouncementsReadOnly || isAnnouncementsLocked || isCampusMeshLocked || isAbekaItLocked
+    val composerReadOnlyMessage = when {
+        isAnnouncementsLocked -> "📍 Only available on campus"
+        isAnnouncementsReadOnly -> "🔒 Only lecturers can post here"
+        isCampusMeshLocked -> "📍 Only available on campus"
+        isAbekaItLocked -> "📍 Only available on campus"
+        else -> ""
+    }
     val joinedChannels by viewModel.joinedChannels.collectAsStateWithLifecycle()
     val hasUnreadChannels by viewModel.unreadChannelMessages.collectAsStateWithLifecycle()
     val hasUnreadPrivateMessages by viewModel.unreadPrivateMessages.collectAsStateWithLifecycle()
@@ -54,7 +80,6 @@ fun ChatScreen(viewModel: ChatViewModel) {
     val commandSuggestions by viewModel.commandSuggestions.collectAsStateWithLifecycle()
     val showMentionSuggestions by viewModel.showMentionSuggestions.collectAsStateWithLifecycle()
     val mentionSuggestions by viewModel.mentionSuggestions.collectAsStateWithLifecycle()
-    val showAppInfo by viewModel.showAppInfo.collectAsStateWithLifecycle()
     val showMeshPeerListSheet by viewModel.showMeshPeerList.collectAsStateWithLifecycle()
     val privateChatSheetPeer by viewModel.privateChatSheetPeer.collectAsStateWithLifecycle()
     val showVerificationSheet by viewModel.showVerificationSheet.collectAsStateWithLifecycle()
@@ -81,14 +106,13 @@ fun ChatScreen(viewModel: ChatViewModel) {
         showPasswordDialog = showPasswordPrompt
     }
 
-    // Campus-preset channel auto-join: reacts to AppMode changes from
-    // LocationChannelManager's geofence check (Main Campus is otherwise reached directly via
-    // the pinned geohash channel in LocationChannelsSheet, not a manual mode picker).
-    LaunchedEffect(Unit) {
-        com.campusmesh.android.services.AppStateStore.currentAppMode.collect { mode ->
-            applyChannelsForMode(mode, viewModel)
-        }
-    }
+    // Campus-preset channel auto-join/leave now lives in MainActivity (see its
+    // OnboardingState.COMPLETE branch) instead of here, since this composable (ChatScreen, the
+    // pushed conversation-detail screen) isn't guaranteed to ever be composed - a user who only
+    // ever looks at the chat list would never trigger it, which is exactly how a stale
+    // auto-joined #general-mesh channel kept showing up in the chat list even after the preset
+    // was removed. MainActivity's branch is a sibling to whichever of the four top-level screens
+    // (chat list/conversation/settings/map) is showing, so it always runs regardless.
 
     val isConnected by viewModel.isConnected.collectAsStateWithLifecycle()
     val passwordPromptChannel by viewModel.passwordPromptChannel.collectAsStateWithLifecycle()
@@ -105,8 +129,12 @@ fun ChatScreen(viewModel: ChatViewModel) {
             if (locationChannel is com.campusmesh.android.geohash.ChannelID.Location) {
                 val geokey = "geo:${locationChannel.channel.geohash}"
                 channelMessages[geokey] ?: emptyList()
+            } else if (locationChannel is com.campusmesh.android.geohash.ChannelID.Mesh) {
+                val localMsgs = messages
+                val ecMsgs = channelMessages["geo:ec"] ?: emptyList()
+                (localMsgs + ecMsgs).distinctBy { it.id }.sortedBy { it.timestamp }
             } else {
-                messages // Mesh timeline
+                messages
             }
         }
     }
@@ -138,6 +166,38 @@ fun ChatScreen(viewModel: ChatViewModel) {
                     .windowInsetsPadding(WindowInsets.statusBars)
                     .height(headerHeight)
             )
+
+            // Dynamic geohash awareness banner for #ec (Global Mesh)
+            val selectedLocationChannel by viewModel.selectedLocationChannel.collectAsStateWithLifecycle()
+            val isMeshChannel = currentChannel == null && selectedLocationChannel is com.campusmesh.android.geohash.ChannelID.Mesh
+            if (isMeshChannel) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "🌍",
+                            fontSize = 18.sp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Welcome to Global Mesh (#ec)! This covers almost the whole of Ghana, allowing you to connect with other Ghanaians and users from other countries.",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.SansSerif,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+            }
 
             // Messages area - takes up available space, will compress when keyboard appears
             MessagesList(
@@ -246,7 +306,9 @@ fun ChatScreen(viewModel: ChatViewModel) {
                 currentChannel = currentChannel,
                 nickname = nickname,
                 colorScheme = colorScheme,
-                showMediaButtons = showMediaButtons
+                showMediaButtons = showMediaButtons,
+                readOnly = isComposerReadOnly,
+                readOnlyMessage = composerReadOnlyMessage
             )
         }
 
@@ -259,8 +321,6 @@ fun ChatScreen(viewModel: ChatViewModel) {
             viewModel = viewModel,
             colorScheme = colorScheme,
             onSidebarToggle = { viewModel.showMeshPeerList() },
-            onShowAppInfo = { viewModel.showAppInfo() },
-            onPanicClear = { viewModel.panicClearAllData() },
             onLocationChannelsClick = { showLocationChannelsSheet = true },
             onLocationNotesClick = { showLocationNotesSheet = true },
             onInvitePeersClick = { showInviteQrDialog = true }
@@ -335,8 +395,6 @@ fun ChatScreen(viewModel: ChatViewModel) {
             showPasswordDialog = false
             passwordInput = ""
         },
-        showAppInfo = showAppInfo,
-        onAppInfoDismiss = { viewModel.hideAppInfo() },
         showLocationChannelsSheet = showLocationChannelsSheet,
         onLocationChannelsSheetDismiss = { showLocationChannelsSheet = false },
         showLocationNotesSheet = showLocationNotesSheet,
@@ -382,7 +440,9 @@ fun ChatInputSection(
     currentChannel: String?,
     nickname: String,
     colorScheme: ColorScheme,
-    showMediaButtons: Boolean
+    showMediaButtons: Boolean,
+    readOnly: Boolean = false,
+    readOnlyMessage: String = "🔒 Only lecturers can post here"
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -419,6 +479,8 @@ fun ChatInputSection(
                 currentChannel = currentChannel,
                 nickname = nickname,
                 showMediaButtons = showMediaButtons,
+                readOnly = readOnly,
+                readOnlyMessage = readOnlyMessage,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -434,8 +496,6 @@ private fun ChatFloatingHeader(
     viewModel: ChatViewModel,
     colorScheme: ColorScheme,
     onSidebarToggle: () -> Unit,
-    onShowAppInfo: () -> Unit,
-    onPanicClear: () -> Unit,
     onLocationChannelsClick: () -> Unit,
     onLocationNotesClick: () -> Unit,
     onInvitePeersClick: () -> Unit
@@ -460,12 +520,16 @@ private fun ChatFloatingHeader(
                     onBackClick = {
                         when {
                             selectedPrivatePeer != null -> viewModel.endPrivateChat()
-                            currentChannel != null -> viewModel.switchToChannel(null)
+                            currentChannel != null -> {
+                                viewModel.switchToChannel(null)
+                                viewModel.returnToChatList()
+                            }
+                            // Plain Global Mesh timeline - reached via a "push" from the chat
+                            // list (ChatListScreen's EntryKind.MESH), so back returns there too.
+                            else -> viewModel.returnToChatList()
                         }
                     },
                     onSidebarClick = onSidebarToggle,
-                    onTripleClick = onPanicClear,
-                    onShowAppInfo = onShowAppInfo,
                     onLocationChannelsClick = onLocationChannelsClick,
                     onLocationNotesClick = {
                         // Ensure location is loaded before showing sheet
@@ -485,28 +549,37 @@ private fun ChatFloatingHeader(
 
 /**
  * Joins the preset channels for a campus mode. Off-campus (GENERAL_MESH) doesn't force-leave
- * anything -- it just stops auto-joining campus-only channels going forward. Called from the
- * [com.campusmesh.android.services.AppStateStore.currentAppMode] collector above, which reacts
- * to [com.campusmesh.android.geohash.LocationChannelManager]'s geofence detection now that there
+ * anything -- it just stops auto-joining campus-only channels going forward. Called from a
+ * [com.campusmesh.android.services.AppStateStore.currentAppMode] collector in MainActivity (not
+ * this file - see MainActivity's OnboardingState.COMPLETE branch), which reacts to
+ * [com.campusmesh.android.geohash.LocationChannelManager]'s geofence detection now that there
  * is no manual mode-picker UI (Main Campus is reached directly via the pinned geohash channel in
- * LocationChannelsSheet).
+ * LocationChannelsSheet). `internal` rather than `private` so MainActivity (a different file) can
+ * call it.
  *
  * Only calls [ChatViewModel.joinChannel] for channels not already joined: that function also
  * *switches* the active channel view when the channel is already joined (matches its use
  * elsewhere as a `/join` command), so calling it unconditionally here would yank the user's
  * current view to a preset channel every time the mode re-confirms, not just on first entry.
  */
-private fun applyChannelsForMode(mode: com.campusmesh.android.data.AppMode, viewModel: ChatViewModel) {
+internal fun applyChannelsForMode(mode: com.campusmesh.android.data.AppMode, viewModel: ChatViewModel) {
     val presets = when (mode) {
-        com.campusmesh.android.data.AppMode.MAIN_CAMPUS -> listOf("#gctu-announcements", "#computing-cis", "#engineering")
+        com.campusmesh.android.data.AppMode.MAIN_CAMPUS -> listOf("#gctu-announcements", "#campus-mesh")
         com.campusmesh.android.data.AppMode.ABEKA_CAMPUS -> listOf("#gctu-announcements", "#abeka-it-business")
-        com.campusmesh.android.data.AppMode.GENERAL_MESH -> listOf("#general-mesh")
+        // Off-campus no longer auto-joins a preset channel - the plain "Mesh" entry (raw BLE
+        // broadcast, already in the chat list) covers this case, so #general-mesh was a
+        // redundant duplicate entry. Also leave it below for anyone already joined from before
+        // this change.
+        com.campusmesh.android.data.AppMode.GENERAL_MESH -> emptyList()
     }
     val alreadyJoined = viewModel.joinedChannels.value
     presets.forEach { channel ->
         if (channel !in alreadyJoined) {
             viewModel.joinChannel(channel)
         }
+    }
+    if ("#general-mesh" in alreadyJoined) {
+        viewModel.leaveChannel("#general-mesh")
     }
 }
 
@@ -519,8 +592,6 @@ private fun ChatDialogs(
     onPasswordChange: (String) -> Unit,
     onPasswordConfirm: () -> Unit,
     onPasswordDismiss: () -> Unit,
-    showAppInfo: Boolean,
-    onAppInfoDismiss: () -> Unit,
     showLocationChannelsSheet: Boolean,
     onLocationChannelsSheetDismiss: () -> Unit,
     showLocationNotesSheet: Boolean,
@@ -549,21 +620,11 @@ private fun ChatDialogs(
         onDismiss = onPasswordDismiss
     )
 
-    // About sheet
-    var showDebugSheet by remember { mutableStateOf(false) }
-    AboutSheet(
-        isPresented = showAppInfo,
-        onDismiss = onAppInfoDismiss,
-        onShowDebug = { showDebugSheet = true }
-    )
-    if (showDebugSheet) {
-        com.campusmesh.android.ui.debug.DebugSettingsSheet(
-            isPresented = showDebugSheet,
-            onDismiss = { showDebugSheet = false },
-            meshService = viewModel.meshService
-        )
-    }
-    
+    // App info, theme, mesh/network settings, and emergency data deletion all now live in
+    // SettingsScreen.kt instead of a separate AboutSheet - see SettingsScreen's "About App",
+    // "Appearance", "Mesh & Network", and "Sensitive Settings" sections. Debug Settings moved
+    // there too (bottom of "Sensitive Settings").
+
     // Location channels sheet
     if (showLocationChannelsSheet) {
         LocationChannelsSheet(

@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.RandomAccessFile
@@ -40,6 +41,15 @@ class FileTransferManager(
         // pieces by the existing FragmentingPacketSender (paced at ~20ms/fragment), so this just
         // keeps successive chunk sends from queuing on top of each other before that finishes.
         private const val INTER_CHUNK_DELAY_MS = 150L
+
+        // Missing-chunk retry sweep: previously a stalled incoming transfer only got re-requested
+        // via onPeerReachable (i.e. only after the peer actually disconnected and reconnected).
+        // Over a continuously-open BLE connection where a chunk's fragments just got dropped (BLE
+        // notify has no delivery guarantee), nothing ever nudged the sender again, so the transfer
+        // sat incomplete forever with no error surfaced anywhere. This periodic sweep re-requests
+        // still-missing chunks on a timer instead of waiting for a reconnect that may never happen.
+        private const val RETRY_SWEEP_INTERVAL_MS = 8_000L
+        private const val MAX_STALLED_RETRY_ATTEMPTS = 6
     }
 
     private val gson = Gson()
@@ -50,6 +60,10 @@ class FileTransferManager(
 
     private val cancelledTransfers = ConcurrentHashMap.newKeySet<String>()
     private val sendJobs = ConcurrentHashMap<String, Job>()
+    // Tracks retry attempts for stalled incoming transfers (see RETRY_SWEEP_INTERVAL_MS above).
+    // Reset to 0 whenever a chunk actually lands, so a slow-but-progressing transfer never gets
+    // capped out - only a truly stalled one (no forward progress despite repeated nudges) does.
+    private val incomingRetryAttempts = ConcurrentHashMap<String, Int>()
 
     init {
         scope.launch {
@@ -62,6 +76,43 @@ class FileTransferManager(
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to handle chunk event: ${e.message}", e)
+                }
+            }
+        }
+        startStalledTransferRetrySweep()
+    }
+
+    /**
+     * Periodically re-requests missing chunks for any incoming transfer that isn't progressing,
+     * instead of only doing so on [onPeerReachable] (peer reconnect). Without this, a chunk lost
+     * to a dropped BLE fragment mid-transfer - while the sender stays continuously connected the
+     * whole time, never disconnecting - would never get re-requested and the file would simply
+     * never complete, with no error shown anywhere.
+     */
+    private fun startStalledTransferRetrySweep() {
+        scope.launch {
+            while (isActive) {
+                delay(RETRY_SWEEP_INTERVAL_MS)
+                try {
+                    val dirs = inDir.listFiles { f -> f.isDirectory } ?: continue
+                    for (dir in dirs) {
+                        val manifest = readIncomingMeta(dir) ?: continue
+                        val missing = missingIndices(dir, manifest.totalChunks)
+                        if (missing.isEmpty()) continue
+
+                        val attempts = incomingRetryAttempts.getOrDefault(manifest.transferId, 0)
+                        if (attempts >= MAX_STALLED_RETRY_ATTEMPTS) continue
+
+                        incomingRetryAttempts[manifest.transferId] = attempts + 1
+                        Log.d(
+                            TAG,
+                            "Stalled-transfer retry ${attempts + 1}/$MAX_STALLED_RETRY_ATTEMPTS: " +
+                                "re-requesting ${missing.size}/${manifest.totalChunks} missing chunks for ${manifest.transferId.take(12)}"
+                        )
+                        sendRequest(manifest, missing)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Stalled-transfer retry sweep failed: ${e.message}", e)
                 }
             }
         }
@@ -94,7 +145,7 @@ class FileTransferManager(
      */
     fun sendChunked(toPeerIDOrNull: String?, filePath: String, fileName: String, mimeType: String): String? {
         val file = File(filePath)
-        if (!file.exists()) return null
+        if (!file.exists() || file.length() !in 1..FileChunkProtocol.MAX_FILE_SIZE) return null
         val bytes = try { file.readBytes() } catch (e: Exception) {
             Log.e(TAG, "Failed to read $filePath for chunked send: ${e.message}")
             return null
@@ -113,6 +164,7 @@ class FileTransferManager(
             totalChunks = totalChunks,
             toPeerID = toPeerIDOrNull
         )
+        if (!FileChunkProtocol.isValidInit(toInit(manifest))) return null
         persistOutgoing(manifest)
         cancelledTransfers.remove(transferId)
 
@@ -188,6 +240,13 @@ class FileTransferManager(
     private fun sessionDir(transferId: String) = File(inDir, safeName(transferId)).apply { mkdirs() }
 
     private fun handleIncomingInit(peerID: String, isPrivate: Boolean, init: FileChunkProtocol.Init) {
+        if (!FileChunkProtocol.isValidInit(init)) return
+        val existingDir = File(inDir, safeName(init.transferId))
+        if (!File(existingDir, "meta.json").exists()) {
+            val sessions = inDir.listFiles { f -> f.isDirectory }?.toList().orEmpty()
+            val reserved = sessions.sumOf { readIncomingMeta(it)?.fileSize ?: 0L }
+            if (sessions.size >= 16 || reserved + init.fileSize > 256L * 1024 * 1024) return
+        }
         val dir = sessionDir(init.transferId)
         val metaFile = File(dir, "meta.json")
         val manifest = IncomingManifest(
@@ -200,13 +259,17 @@ class FileTransferManager(
             fromPeerID = peerID,
             isPrivate = isPrivate
         )
-        if (!metaFile.exists()) {
+        if (metaFile.exists()) {
+            val existing = readIncomingMeta(dir) ?: return
+            if (existing != manifest) return
+        } else {
             try {
                 metaFile.writeText(gson.toJson(manifest))
                 // Pre-size so out-of-order chunk writes at arbitrary offsets are always in-bounds.
                 RandomAccessFile(File(dir, "data.part"), "rw").use { it.setLength(init.fileSize) }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start incoming session ${init.transferId.take(12)}: ${e.message}")
+                dir.deleteRecursively()
                 return
             }
         }
@@ -220,7 +283,7 @@ class FileTransferManager(
     }
 
     private fun handleIncomingChunk(peerID: String, chunk: FileChunkProtocol.Chunk) {
-        val dir = sessionDir(chunk.transferId)
+        val dir = File(inDir, safeName(chunk.transferId))
         val metaFile = File(dir, "meta.json")
         if (!metaFile.exists()) {
             // Chunk arrived before (or without) its Init -- can't place it without knowing
@@ -236,6 +299,7 @@ class FileTransferManager(
             return
         } ?: return
 
+        if (peerID != manifest.fromPeerID || !FileChunkProtocol.isValidChunk(chunk, toInit(manifest))) return
         try {
             RandomAccessFile(File(dir, "data.part"), "rw").use { raf ->
                 raf.seek(chunk.chunkIndex.toLong() * manifest.chunkSize)
@@ -246,6 +310,9 @@ class FileTransferManager(
             return
         }
         markReceived(dir, chunk.chunkIndex, manifest.totalChunks)
+        // Forward progress landed - give the stalled-transfer retry sweep a fresh budget rather
+        // than counting this still-active transfer's earlier nudges against it.
+        incomingRetryAttempts[chunk.transferId] = 0
 
         if (missingIndices(dir, manifest.totalChunks).isEmpty()) {
             finalizeIncoming(dir, manifest)
@@ -258,8 +325,10 @@ class FileTransferManager(
             Log.w(TAG, "Resume request for unknown outgoing transfer ${request.transferId.take(12)} from ${peerID.take(8)}")
             return
         }
+        if (manifest.toPeerID != null && manifest.toPeerID != peerID) return
+        if (request.missing.any { it !in 0 until manifest.totalChunks }) return
         val file = File(manifest.filePath)
-        if (!file.exists()) {
+        if (!file.exists() || file.length() != manifest.fileSize || file.length() > FileChunkProtocol.MAX_FILE_SIZE) {
             Log.w(TAG, "Source file for ${request.transferId.take(12)} no longer on disk; can't resume")
             return
         }
@@ -287,6 +356,10 @@ class FileTransferManager(
     }
 
     private fun finalizeIncoming(dir: File, manifest: IncomingManifest) {
+        if (File(dir, "data.part").length() != manifest.fileSize) {
+            dir.deleteRecursively()
+            return
+        }
         val bytes = try { File(dir, "data.part").readBytes() } catch (e: Exception) {
             Log.e(TAG, "Failed to read reassembled file for ${manifest.transferId.take(12)}: ${e.message}")
             return
@@ -362,10 +435,14 @@ class FileTransferManager(
         totalChunks = m.totalChunks
     )
 
+    private fun toInit(m: IncomingManifest) = FileChunkProtocol.Init(
+        m.transferId, m.fileName, m.mimeType, m.fileSize, m.chunkSize, m.totalChunks
+    )
+
     private fun readIncomingMeta(dir: File): IncomingManifest? {
         val metaFile = File(dir, "meta.json")
         if (!metaFile.exists()) return null
-        return try { gson.fromJson(metaFile.readText(), IncomingManifest::class.java) } catch (_: Exception) { null }
+        return try { gson.fromJson(metaFile.readText(), IncomingManifest::class.java)?.takeIf { FileChunkProtocol.isValidInit(toInit(it)) } } catch (_: Exception) { null }
     }
 
     private fun persistOutgoing(m: OutgoingManifest) {

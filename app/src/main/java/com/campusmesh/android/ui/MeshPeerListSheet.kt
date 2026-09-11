@@ -301,8 +301,17 @@ fun PeopleSection(
     selectedPrivatePeer: String?,
     wifiAwarePeerIDs: Set<String> = emptySet(),
     viewModel: ChatViewModel,
-    onPrivateChatStart: (String) -> Unit
+    onPrivateChatStart: (String) -> Unit,
+    // Case-insensitive substring match against each person's display name. Blank (default) shows
+    // everyone, unchanged from before - MeshPeerListSheet doesn't pass this, only
+    // NewDirectMessageSheet's search box does. Usernames aren't unique in this app (no server to
+    // enforce it - see splitSuffix/#hash disambiguation elsewhere), so a query can still match
+    // multiple different people; each result's own hash suffix (when shown) disambiguates them.
+    filterQuery: String = ""
 ) {
+    fun matchesQuery(name: String): Boolean =
+        filterQuery.isBlank() || name.contains(filterQuery, ignoreCase = true)
+
     Column(modifier = modifier) {
         Text(
             text = stringResource(id = R.string.people).uppercase(),
@@ -315,7 +324,7 @@ fun PeopleSection(
                 .padding(top = 8.dp, bottom = 4.dp)
         )
 
-        if (connectedPeers.isEmpty()) {
+        if (connectedPeers.isEmpty() && filterQuery.isBlank()) {
             Text(
                 text = stringResource(id = R.string.no_one_connected),
                 style = MaterialTheme.typography.bodyMedium.copy(
@@ -412,6 +421,32 @@ fun PeopleSection(
                 if (b != "You") baseNameCounts[b] = (baseNameCounts[b] ?: 0) + 1
             }
 
+        // Pre-check for the "no matches" empty state below - cheap since these lists are small
+        // (mesh peer counts, not a server-backed user directory).
+        val hasAnyResults = filterQuery.isBlank() || run {
+            val connectedMatch = sortedPeers.any { pid -> matchesQuery(computeDisplayNameForPeerId(pid)) }
+            val offlineMatch = offlineFavorites.any { fav ->
+                val favPeerID = fav.peerNoisePublicKey.joinToString("") { b -> "%02x".format(b) }
+                val isMappedToConnected = noiseHexByPeerID.values.any { it.equals(favPeerID, ignoreCase = true) }
+                !isMappedToConnected && matchesQuery(peerNicknames[favPeerID] ?: fav.peerNickname)
+            }
+            connectedMatch || offlineMatch
+        }
+
+        if (filterQuery.isNotBlank() && !hasAnyResults) {
+            Text(
+                text = "No one found matching \"$filterQuery\"",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = 12.sp
+                ),
+                color = colorScheme.onSurface.copy(alpha = 0.5f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 40.dp, vertical = 12.dp)
+            )
+        }
+
         sortedPeers.forEach { peerID ->
             val isFavorite = peerFavoriteStates[peerID] ?: false
             val isVerified = peerVerifiedStates[peerID] ?: false
@@ -428,6 +463,7 @@ fun PeopleSection(
             )
 
             val displayName = if (peerID == nickname) "You" else (peerNicknames[peerID] ?: (privateChats[peerID]?.lastOrNull()?.sender ?: peerID.take(12)))
+            if (!matchesQuery(displayName)) return@forEach
             val (bName, _) = splitSuffix(displayName)
             val showHash = (baseNameCounts[bName] ?: 0) > 1
 
@@ -482,6 +518,7 @@ fun PeopleSection(
             // open chat with the connected peerID instead of the noise hex for a seamless window
             val mappedConnectedPeerID = noiseHexByPeerID.entries.firstOrNull { it.value.equals(favPeerID, ignoreCase = true) }?.key
             val dn = peerNicknames[favPeerID] ?: fav.peerNickname
+            if (!matchesQuery(dn)) return@forEach
             val (bName, _) = splitSuffix(dn)
             val showHash = (baseNameCounts[bName] ?: 0) > 1
 

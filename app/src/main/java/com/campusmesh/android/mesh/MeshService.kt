@@ -19,6 +19,10 @@ interface MeshService {
     fun sendFavoriteNotification(peerID: String, isFavorite: Boolean) {}
     fun sendVerifyChallenge(peerID: String, noiseKeyHex: String, nonceA: ByteArray)
     fun sendVerifyResponse(peerID: String, noiseKeyHex: String, nonceA: ByteArray)
+    // Voice call signaling (offer/ringing/accept/reject/busy/end). Default no-op: only the
+    // Wi-Fi Aware transport implements this for real (see WifiAwareMeshService) since calls
+    // require the direct local link Wi-Fi Aware provides - BLE mesh has no equivalent.
+    fun sendCallSignal(peerID: String, data: ByteArray) {}
     fun sendFileBroadcast(file: BitchatFilePacket)
     fun sendFilePrivate(recipientPeerID: String, file: BitchatFilePacket)
     fun cancelFileTransfer(transferId: String): Boolean

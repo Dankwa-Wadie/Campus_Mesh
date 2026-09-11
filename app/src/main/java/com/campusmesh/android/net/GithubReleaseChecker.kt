@@ -65,11 +65,20 @@ object GithubReleaseChecker {
      * Parses GitHub API JSON response without external dependencies.
      * Extracts tag_name, version code, APK download URL, and SHA-256 hash.
      */
-    private fun parseRelease(json: String): ReleaseInfo? {
+    fun parseRelease(json: String): ReleaseInfo? {
         return try {
             // Extract tag_name (e.g. "v1.3.0")
-            val tagName = Regex("\"tag_name\"\\s*:\\s*\"([^\"]+)\"")
+            var tagName = Regex("\"tag_name\"\\s*:\\s*\"([^\"]+)\"")
                 .find(json)?.groupValues?.get(1) ?: return null
+
+            // If tag_name is just "v" or "V", try to extract "name"
+            if (tagName.trim().equals("v", ignoreCase = true)) {
+                val nameField = Regex("\"name\"\\s*:\\s*\"([^\"]+)\"")
+                    .find(json)?.groupValues?.get(1)
+                if (!nameField.isNullOrBlank()) {
+                    tagName = nameField
+                }
+            }
 
             // Convert tag to versionCode: "v1.3.0" -> 130
             val versionCode = parseVersionCode(tagName)

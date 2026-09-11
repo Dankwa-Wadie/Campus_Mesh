@@ -103,7 +103,8 @@ class GeohashPickerActivity : OrientationAwareActivity() {
                                 WebView(context).apply {
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
-                                    settings.cacheMode = WebSettings.LOAD_DEFAULT
+                                    settings.databaseEnabled = true
+                                    settings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
                                     settings.allowFileAccess = true
                                     settings.allowContentAccess = true
                                     webChromeClient = WebChromeClient()

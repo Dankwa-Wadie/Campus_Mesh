@@ -71,13 +71,13 @@ This client enables seamless cross-platform communication between Android and iO
 
 ### Rich Messaging & Slash Commands
 - **IRC-Style Interface**: Intuitive command-line interface with full slash-command auto-completion (`/j`, `/m`, `/w`, `/pass`, `/save`, etc.).
-- **Channel Security**: Password-protected channels (`/pass`) with Argon2id key derivation.
+- **Channel Security**: Password-protected channels (`/pass`) with PBKDF2-HMAC-SHA256 key derivation (100,000 iterations).
 - **Voice & Media Sharing**: Compressed audio notes and file chunking for rich media over low-bandwidth mesh links.
 - **Mentions & Receipts**: `@nickname` autocomplete, delivery status indicators, and RSSI signal quality badges.
 
 ### Battery & Performance
 - **Adaptive Power Management**: Dynamically shifts scanning duty cycles between *Performance*, *Balanced*, *Power Saver*, and *Ultra-Low Power* depending on battery percentage and charging status.
-- **LZ4 Compression**: Automatically compresses payload content >100 bytes for 30-70% bandwidth reduction over BLE.
+- **Payload Compression**: Automatically compresses payload content >100 bytes with raw DEFLATE (zlib) for 30-70% bandwidth reduction over BLE.
 
 ---
 

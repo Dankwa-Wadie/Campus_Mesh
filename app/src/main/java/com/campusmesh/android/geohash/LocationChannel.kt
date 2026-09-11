@@ -63,7 +63,7 @@ sealed class ChannelID {
      */
     val nostrGeohashTag: String?
         get() = when (this) {
-            is Mesh -> null
+            is Mesh -> "ec"
             is Location -> channel.geohash
         }
     

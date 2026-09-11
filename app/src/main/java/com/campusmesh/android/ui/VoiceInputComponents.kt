@@ -2,7 +2,8 @@ package com.campusmesh.android.ui
 
 import android.Manifest
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -56,75 +57,101 @@ fun VoiceRecordButton(
 
     Box(
         modifier = modifier
-            .size(32.dp)
+            .size(48.dp) // was 32.dp - below Android's recommended 48dp min touch target, made it
+                         // easy for a finger to drift off the button mid-hold (see gesture note below)
             .background(backgroundColor, CircleShape)
             .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        if (!isRecording) {
-                            if (micPermission.status !is PermissionStatus.Granted) {
-                                micPermission.launchPermissionRequest()
-                                return@detectTapGestures
-                            }
-                            val rec = VoiceRecorder(context)
-                            val f = rec.start()
-                            recorder = rec
-                            isRecording = f != null
-                            recordedFilePath = f?.absolutePath
-                            recordingStart = System.currentTimeMillis()
-                            if (isRecording) {
-                                latestOnStart.value()
-                                // Haptic "knock" when recording starts
-                                try { haptic.performHapticFeedback(HapticFeedbackType.LongPress) } catch (_: Exception) {}
-                                // Start amplitude polling loop
-                                ampJob?.cancel()
-                                ampJob = scope.launch {
-                                    while (isActive && isRecording) {
-                                        val amp = recorder?.pollAmplitude() ?: 0
-                                        val elapsedMs = (System.currentTimeMillis() - recordingStart).coerceAtLeast(0L)
-                                        latestOnAmplitude.value(amp, elapsedMs)
-                                        // Auto-stop after 10 seconds
-                                        if (elapsedMs >= 10_000 && isRecording) {
-                                            val file = recorder?.stop()
-                                            isRecording = false
-                                            recorder = null
-                                            val path = file?.absolutePath
-                                            if (!path.isNullOrBlank()) {
-                                                // Haptic "knock" on auto stop
-                                                try { haptic.performHapticFeedback(HapticFeedbackType.LongPress) } catch (_: Exception) {}
-                                                latestOnFinish.value(path)
-                                            }
-                                            break
+                // Was detectTapGestures(onPress = { ... awaitRelease() ... }), which is built for
+                // discrete tap/long-press disambiguation: it cancels once a pointer drifts past
+                // Android's touch-slop threshold, treating that as "not a tap anymore" even though
+                // nothing else on screen was competing for the gesture. That's exactly what a
+                // sustained hold-to-record button doesn't want - a finger naturally wanders a few
+                // pixels during a multi-second hold, which was ending the recording after just a
+                // second or two. This tracks press/first-down and release/all-up directly instead,
+                // ignoring movement entirely in between.
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+
+                    if (!isRecording) {
+                        if (micPermission.status !is PermissionStatus.Granted) {
+                            micPermission.launchPermissionRequest()
+                            // Drain the rest of this gesture (wait for the finger to lift) so the
+                            // same down event doesn't immediately re-trigger the next iteration.
+                            do {
+                                val event = awaitPointerEvent()
+                            } while (event.changes.any { it.pressed })
+                            return@awaitEachGesture
+                        }
+                        val rec = VoiceRecorder(context)
+                        val f = rec.start()
+                        recorder = rec
+                        isRecording = f != null
+                        recordedFilePath = f?.absolutePath
+                        recordingStart = System.currentTimeMillis()
+                        if (isRecording) {
+                            latestOnStart.value()
+                            // Haptic "knock" when recording starts
+                            try { haptic.performHapticFeedback(HapticFeedbackType.LongPress) } catch (_: Exception) {}
+                            // Start amplitude polling loop
+                            ampJob?.cancel()
+                            ampJob = scope.launch {
+                                while (isActive && isRecording) {
+                                    val amp = recorder?.pollAmplitude() ?: 0
+                                    val elapsedMs = (System.currentTimeMillis() - recordingStart).coerceAtLeast(0L)
+                                    latestOnAmplitude.value(amp, elapsedMs)
+                                    // Auto-stop after 10 seconds
+                                    if (elapsedMs >= 10_000 && isRecording) {
+                                        val file = recorder?.stop()
+                                        isRecording = false
+                                        recorder = null
+                                        val path = file?.absolutePath
+                                        if (!path.isNullOrBlank()) {
+                                            // Haptic "knock" on auto stop
+                                            try { haptic.performHapticFeedback(HapticFeedbackType.LongPress) } catch (_: Exception) {}
+                                            latestOnFinish.value(path)
                                         }
-                                        delay(80)
+                                        break
+                                    }
+                                    delay(80)
+                                }
+                            }
+                        }
+                    }
+
+                    try {
+                        // Wait for every pointer to lift, regardless of how far any of them move
+                        // in the meantime - see the comment above for why this replaced awaitRelease().
+                        do {
+                            val event = awaitPointerEvent()
+                        } while (event.changes.any { it.pressed })
+                    } finally {
+                        ampJob?.cancel()
+                        ampJob = null
+                        if (isRecording) {
+                            // AwaitPointerEventScope (awaitEachGesture's receiver) is a restricted
+                            // suspend scope - it can't call a plain kotlinx.coroutines.delay()
+                            // directly, so the "extend recording briefly to avoid clipping the
+                            // tail" delay has to happen in a normal coroutine instead. This also
+                            // means the gesture detector itself isn't blocked for those 500ms, so
+                            // a new press can start immediately if the user taps again right away.
+                            scope.launch {
+                                delay(500)
+                                if (isRecording) {
+                                    val file = recorder?.stop()
+                                    isRecording = false
+                                    recorder = null
+                                    val path = (file?.absolutePath ?: recordedFilePath)
+                                    recordedFilePath = null
+                                    if (!path.isNullOrBlank()) {
+                                        // Haptic "knock" when recording stops
+                                        try { haptic.performHapticFeedback(HapticFeedbackType.LongPress) } catch (_: Exception) {}
+                                        latestOnFinish.value(path)
                                     }
                                 }
                             }
                         }
-                        try {
-                            awaitRelease()
-                        } finally {
-                            if (isRecording) {
-                                // Extend recording for 500ms after release to avoid clipping
-                                delay(500)
-                            }
-                            if (isRecording) {
-                                val file = recorder?.stop()
-                                isRecording = false
-                                recorder = null
-                                val path = (file?.absolutePath ?: recordedFilePath)
-                                recordedFilePath = null
-                                if (!path.isNullOrBlank()) {
-                                    // Haptic "knock" when recording stops
-                                    try { haptic.performHapticFeedback(HapticFeedbackType.LongPress) } catch (_: Exception) {}
-                                    latestOnFinish.value(path)
-                                }
-                            }
-                            ampJob?.cancel()
-                            ampJob = null
-                        }
                     }
-                )
+                }
             },
         contentAlignment = Alignment.Center
     ) {
@@ -132,7 +159,7 @@ fun VoiceRecordButton(
             imageVector = Icons.Filled.Mic,
             contentDescription = stringResource(com.campusmesh.android.R.string.cd_record_voice),
             tint = Color.Black,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(24.dp)
         )
     }
 }

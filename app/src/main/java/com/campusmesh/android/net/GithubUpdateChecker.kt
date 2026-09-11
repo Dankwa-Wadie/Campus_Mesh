@@ -36,7 +36,7 @@ import com.campusmesh.android.config.ConfigLoader
  * Data structures for GitHub Release API responses.
  */
 data class GithubRelease(
-    @SerializedName("tag_name") val tagName: String,
+    @SerializedName("tag_name") val tagName: String?,
     @SerializedName("name") val name: String?,
     @SerializedName("body") val body: String?,
     @SerializedName("html_url") val htmlUrl: String?,
@@ -63,7 +63,9 @@ sealed class UpdateStatus {
         val downloadUrl: String,
         val apkFileName: String,
         val apkSizeBytes: Long = 0L,
-        val publishedAt: String? = null
+        val publishedAt: String? = null,
+        /** SHA-256 published for [apkFileName], or null if the release didn't publish one. */
+        val sha256: String? = null
     ) : UpdateStatus()
     data class UpToDate(val currentVersion: String) : UpdateStatus()
     data class Downloading(val progressPercent: Int) : UpdateStatus()
@@ -163,8 +165,11 @@ object GithubUpdateChecker {
                     val json = response.body?.string() ?: ""
                     val release = gson.fromJson(json, GithubRelease::class.java)
 
-                    val rawTag = release.tagName.trim()
-                    val latestVersion = rawTag.removePrefix("v").removePrefix("V")
+                    val rawTag = release.tagName?.trim() ?: ""
+                    var latestVersion = rawTag.removePrefix("v").removePrefix("V")
+                    if (latestVersion.isBlank() && !release.name.isNullOrBlank()) {
+                        latestVersion = release.name.trim().removePrefix("v").removePrefix("V")
+                    }
 
                     Log.i(TAG, "GitHub release comparison: Running=$currentVersion vs GitHub Latest=$latestVersion (tag=$rawTag)")
 
@@ -188,7 +193,8 @@ object GithubUpdateChecker {
                                 downloadUrl = apkAsset.downloadUrl,
                                 apkFileName = apkAsset.name,
                                 apkSizeBytes = apkAsset.size,
-                                publishedAt = release.publishedAt
+                                publishedAt = release.publishedAt,
+                                sha256 = resolveExpectedSha256(release, apkAsset.name)
                             )
                             showUpdateNotification(context, latestVersion)
                         } else {
@@ -204,6 +210,54 @@ object GithubUpdateChecker {
                 _statusFlow.value = UpdateStatus.Error(e.message ?: "Failed to reach GitHub")
             }
         }
+    }
+
+    /**
+     * Finds the SHA-256 published for [apkFileName].
+     *
+     * Looks first in the `checksums.txt` release asset (the format `sha256sum` emits:
+     * `<hash>  <filename>` per line), then falls back to a `sha256: <hash>` line in the release
+     * body. Returns null when the release publishes neither, which downgrades the install check
+     * to signing-certificate-only rather than blocking the update.
+     */
+    private fun resolveExpectedSha256(release: GithubRelease, apkFileName: String): String? {
+        val checksumAsset = release.assets?.firstOrNull {
+            it.name.equals("checksums.txt", ignoreCase = true)
+        }
+
+        if (checksumAsset != null) {
+            try {
+                val request = Request.Builder()
+                    .url(checksumAsset.downloadUrl)
+                    .header("User-Agent", "CampusMeshApp-Android")
+                    .build()
+                httpClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val text = response.body?.string().orEmpty()
+                        text.lineSequence().forEach { line ->
+                            val parts = line.trim().split(Regex("\\s+"))
+                            if (parts.size >= 2 &&
+                                parts[0].matches(Regex("[a-fA-F0-9]{64}")) &&
+                                parts[1].removePrefix("*").endsWith(apkFileName)
+                            ) {
+                                return parts[0].lowercase()
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not fetch checksums.txt: ${e.message}")
+            }
+        }
+
+        val fromBody = release.body?.let {
+            Regex("sha256[:\\s]+([a-fA-F0-9]{64})", RegexOption.IGNORE_CASE).find(it)
+        }?.groupValues?.get(1)?.lowercase()
+
+        if (fromBody == null) {
+            Log.w(TAG, "Release published no SHA-256 for $apkFileName")
+        }
+        return fromBody
     }
 
     /**
@@ -235,7 +289,12 @@ object GithubUpdateChecker {
     /**
      * Downloads the APK file from GitHub Releases and prompts the Android Package Installer.
      */
-    fun downloadAndInstall(context: Context, downloadUrl: String, apkFileName: String) {
+    fun downloadAndInstall(
+        context: Context,
+        downloadUrl: String,
+        apkFileName: String,
+        expectedSha256: String? = null
+    ) {
         if (_statusFlow.value is UpdateStatus.Downloading) return
         _statusFlow.value = UpdateStatus.Downloading(0)
 
@@ -258,8 +317,11 @@ object GithubUpdateChecker {
                     }
 
                     val totalBytes = body.contentLength()
-                    val destDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
-                    val destFile = File(destDir, apkFileName)
+                    // Internal cache only. App-specific *external* storage is world-readable to any
+                    // app holding WRITE_EXTERNAL_STORAGE on API 26-28 (our minSdk is 26), which
+                    // would let another app swap the APK between download and install.
+                    val destDir = File(context.cacheDir, "updates").apply { mkdirs() }
+                    val destFile = File(destDir, File(apkFileName).name)
 
                     if (destFile.exists()) {
                         destFile.delete()
@@ -288,11 +350,21 @@ object GithubUpdateChecker {
                     }
 
                     Log.i(TAG, "APK download complete: ${destFile.absolutePath} (${destFile.length()} bytes)")
-                    _statusFlow.value = UpdateStatus.ReadyToInstall(destFile)
 
-                    // Launch Android Package Installer via FileProvider
+                    // Verify before offering to install. buildInstallIntent on its own hands the
+                    // package installer whatever bytes arrived; verifyAndPrepareInstall additionally
+                    // proves they were signed by the same certificate as the running build.
                     val otaManager = OtaUpdateManager(context)
-                    val installIntent = otaManager.buildInstallIntent(destFile)
+                    val installIntent = otaManager.verifyAndPrepareInstall(destFile, expectedSha256)
+                    if (installIntent == null) {
+                        destFile.delete()
+                        _statusFlow.value = UpdateStatus.Error(
+                            "Update rejected: the downloaded APK failed integrity or signature verification."
+                        )
+                        return@launch
+                    }
+
+                    _statusFlow.value = UpdateStatus.ReadyToInstall(destFile)
                     context.startActivity(installIntent)
                 }
             } catch (e: Exception) {

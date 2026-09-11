@@ -55,7 +55,9 @@ The application follows a clean architecture pattern, heavily modularized by fea
 
 ### Testing
 - **Unit Tests**: Located in `app/src/test/`. Use for business logic, protocols, and utility testing.
-- **Instrumented Tests**: Located in `app/src/androidTest/`. Use for UI and permission integration testing.
+- **Instrumented Tests**: No `app/src/androidTest/` source set exists yet, though the
+  `androidTestImplementation` dependencies and `testInstrumentationRunner` are already configured
+  in `app/build.gradle.kts`. Create the source set before adding UI/permission integration tests.
 - **Execution**:
   - Unit: `./gradlew test`
   - Instrumented: `./gradlew connectedAndroidTest`

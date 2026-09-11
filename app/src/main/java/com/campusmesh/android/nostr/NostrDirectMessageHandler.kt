@@ -191,6 +191,7 @@ class NostrDirectMessageHandler(
             }
             NoisePayloadType.VERIFY_CHALLENGE,
             NoisePayloadType.VERIFY_RESPONSE -> Unit // Ignore verification payloads in Nostr direct messages
+            NoisePayloadType.CALL_SIGNAL -> Unit // Calls are 1-hop over Wi-Fi Aware/mesh only, never over Nostr relays
         }
     }
 

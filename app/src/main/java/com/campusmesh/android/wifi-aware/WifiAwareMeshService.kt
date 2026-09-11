@@ -867,6 +867,9 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
 
             override fun onAvailable(network: Network) {
                 Log.i(TAG, "SERVER: onAvailable() - Aware network is ready for ${peerId.take(8)}")
+                // Stash the Network so a later feature (voice calling) can bind its own UDP
+                // socket to this same data path - see WifiAwareConnectionTracker.peerNetworks.
+                connectionTracker.setNetworkForPeer(peerId, network)
                 // Only accept once per network request
                 if (!acceptStarted.compareAndSet(false, true)) return
                 // Offload the blocking accept() off the callback thread so we never stall
@@ -1129,6 +1132,12 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
             }
 
             override fun onCapabilitiesChanged(network: Network, nc: NetworkCapabilities) {
+                // Stash the Network so a later feature (voice calling) can bind its own UDP
+                // socket to this same data path - see WifiAwareConnectionTracker.peerNetworks.
+                // Done unconditionally (before the "already connected" early-return below) since
+                // this callback is also how a call started well after the initial TCP connect
+                // would still learn about the Network if it were ever missed earlier.
+                connectionTracker.setNetworkForPeer(peerId, network)
                 if (connectionTracker.peerSockets.containsKey(peerId)) return
                 val info = (nc.transportInfo as? WifiAwareNetworkInfo) ?: return
                 val addr = info.peerIpv6Addr as? Inet6Address ?: return
@@ -1377,6 +1386,22 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
     override fun sendVerifyResponse(peerID: String, noiseKeyHex: String, nonceA: ByteArray) {
         meshCore.sendVerifyResponse(peerID, noiseKeyHex, nonceA)
     }
+
+    override fun sendCallSignal(peerID: String, data: ByteArray) {
+        meshCore.sendCallSignal(peerID, data)
+    }
+
+    /**
+     * The Wi-Fi Aware [Network] already negotiated for this peer's TCP data path (if connected),
+     * for CallAudioSession to bind a UDP DatagramSocket to the same physical link.
+     */
+    fun getNetworkForPeer(peerId: String): Network? = connectionTracker.getNetworkForPeer(peerId)
+
+    /** Whether we currently have a live Wi-Fi Aware connection (and thus a usable Network) to this peer. */
+    fun isPeerConnected(peerId: String): Boolean = connectionTracker.isConnected(peerId)
+
+    /** The peer's IPv6 address on the negotiated Wi-Fi Aware link, for CallAudioSession's UDP socket. */
+    fun getPeerInetAddress(peerId: String): java.net.InetAddress? = connectionTracker.getSocketForPeer(peerId)?.inetAddress
 
     /**
      * Broadcasts a file (TLV payload) to all peers. Uses protocol version 2 to support

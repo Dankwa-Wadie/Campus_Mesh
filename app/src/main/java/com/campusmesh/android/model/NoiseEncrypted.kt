@@ -23,7 +23,8 @@ enum class NoisePayloadType(val value: UByte) {
     DELIVERED(0x03u),           // Message was delivered
     VERIFY_CHALLENGE(0x10u),    // Verification challenge
     VERIFY_RESPONSE(0x11u),     // Verification response
-    FILE_TRANSFER(0x20u);
+    FILE_TRANSFER(0x20u),
+    CALL_SIGNAL(0x30u);         // Voice/video call signaling (offer/ringing/accept/reject/busy/end)
 
 
     companion object {

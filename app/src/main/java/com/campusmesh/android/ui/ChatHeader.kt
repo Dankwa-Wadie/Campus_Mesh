@@ -223,8 +223,6 @@ fun ChatHeaderContent(
     viewModel: ChatViewModel,
     onBackClick: () -> Unit,
     onSidebarClick: () -> Unit,
-    onTripleClick: () -> Unit,
-    onShowAppInfo: () -> Unit,
     onLocationChannelsClick: () -> Unit,
     onLocationNotesClick: () -> Unit,
     onInvitePeersClick: () -> Unit
@@ -232,6 +230,18 @@ fun ChatHeaderContent(
     val colorScheme = MaterialTheme.colorScheme
 
     when {
+        selectedPrivatePeer != null -> {
+            // Private (DM) header - shows who you're talking to plus a Call button, instead of
+            // falling through to the generic app-brand header below (that was the previous
+            // behavior: a DM looked identical to the main mesh timeline, with no indication of
+            // who you were chatting with in the header itself).
+            PrivateChatHeader(
+                peerID = selectedPrivatePeer,
+                onBackClick = onBackClick,
+                onSidebarClick = onSidebarClick,
+                viewModel = viewModel
+            )
+        }
         currentChannel != null -> {
             // Channel header
             ChannelHeader(
@@ -242,12 +252,9 @@ fun ChatHeaderContent(
             )
         }
         else -> {
-            // Main header
+            // Main (Global Mesh) header
             MainHeader(
-                nickname = nickname,
-                onNicknameChange = viewModel::setNickname,
-                onTitleClick = onShowAppInfo,
-                onTripleTitleClick = onTripleClick,
+                onBackClick = onBackClick,
                 onSidebarClick = onSidebarClick,
                 onLocationChannelsClick = onLocationChannelsClick,
                 onLocationNotesClick = onLocationNotesClick,
@@ -324,12 +331,90 @@ private fun ChannelHeader(
     }
 }
 
+@OptIn(com.google.accompanist.permissions.ExperimentalPermissionsApi::class)
+@Composable
+private fun PrivateChatHeader(
+    peerID: String,
+    onBackClick: () -> Unit,
+    onSidebarClick: () -> Unit,
+    viewModel: ChatViewModel
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val peerNicknames by viewModel.peerNicknames.collectAsStateWithLifecycle()
+    val nickname by viewModel.nickname.collectAsStateWithLifecycle()
+    val displayName = if (peerID == nickname) "You" else (peerNicknames[peerID] ?: peerID.take(12))
+
+    // A voice call is only offered when we have a live Wi-Fi Aware connection to this peer -
+    // that's the only transport with the bandwidth/latency for real-time audio (see
+    // docs/WIFI_VOICE_CALLING_IMPLEMENTATION_PLAN.md). BLE-only peers simply don't get the button.
+    val wifiAwareConnected by com.campusmesh.android.wifiaware.WifiAwareController.connectedPeers.collectAsStateWithLifecycle()
+    val callState by com.campusmesh.android.call.CallSignalingManager.callState.collectAsStateWithLifecycle()
+    val isCallable = wifiAwareConnected.containsKey(peerID)
+    val isCallActive = callState !is com.campusmesh.android.call.CallState.Idle
+    val micPermission = com.google.accompanist.permissions.rememberPermissionState(android.Manifest.permission.RECORD_AUDIO)
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Button(
+            onClick = onBackClick,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color.Transparent,
+                contentColor = colorScheme.primary
+            ),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .offset(x = (-8).dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.back),
+                    modifier = Modifier.size(16.dp),
+                    tint = colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = stringResource(R.string.chat_back),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colorScheme.primary
+                )
+            }
+        }
+
+        Text(
+            text = displayName,
+            style = MaterialTheme.typography.titleMedium,
+            color = colorScheme.primary,
+            maxLines = 1,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .clickable { onSidebarClick() }
+        )
+
+        if (isCallable && !isCallActive) {
+            IconButton(
+                onClick = {
+                    if (micPermission.status !is com.google.accompanist.permissions.PermissionStatus.Granted) {
+                        micPermission.launchPermissionRequest()
+                    } else {
+                        com.campusmesh.android.call.CallSignalingManager.startCall(peerID)
+                    }
+                },
+                modifier = Modifier.align(Alignment.CenterEnd)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Call,
+                    contentDescription = stringResource(R.string.cd_start_voice_call),
+                    tint = Color(0xFF00C851)
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun MainHeader(
-    nickname: String,
-    onNicknameChange: (String) -> Unit,
-    onTitleClick: () -> Unit,
-    onTripleTitleClick: () -> Unit,
+    onBackClick: () -> Unit,
     onSidebarClick: () -> Unit,
     onLocationChannelsClick: () -> Unit,
     onLocationNotesClick: () -> Unit,
@@ -355,26 +440,35 @@ private fun MainHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.fillMaxHeight(),
-            verticalAlignment = Alignment.CenterVertically
+        // Back button - this timeline is reached via a "push" from the chat list
+        // (EntryKind.MESH in ChatListScreen.openEntry) just like a channel or DM, so it needs the
+        // same back affordance those get, rather than relying on the system back button alone.
+        // Previously this spot held the app brand + inline nickname editor; nickname editing now
+        // lives in SettingsScreen's Profile section, and the app-info content that used to open
+        // from a tap here has moved into Settings too (see AboutSheet.kt, no longer invoked).
+        Button(
+            onClick = onBackClick,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color.Transparent,
+                contentColor = colorScheme.primary
+            ),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+            modifier = Modifier.offset(x = (-8).dp)
         ) {
-            Text(
-                text = stringResource(R.string.app_brand),
-                style = MaterialTheme.typography.headlineSmall,
-                color = colorScheme.primary,
-                modifier = Modifier.singleOrTripleClickable(
-                    onSingleClick = onTitleClick,
-                    onTripleClick = onTripleTitleClick
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.back),
+                    modifier = Modifier.size(16.dp),
+                    tint = colorScheme.primary
                 )
-            )
-            
-            Spacer(modifier = Modifier.width(2.dp))
-            
-            NicknameEditor(
-                value = nickname,
-                onValueChange = onNicknameChange
-            )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = stringResource(R.string.chat_back),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colorScheme.primary
+                )
+            }
         }
         
         // Right section with location channels button and peer counter
@@ -479,13 +573,13 @@ private fun LocationChannelsButton(
     
     val (badgeText, badgeColor) = when (selectedChannel) {
         is com.campusmesh.android.geohash.ChannelID.Mesh -> {
-            "#mesh" to Color(0xFF007AFF) // iOS blue for mesh
+            "#ec" to Color(0xFF007AFF) // Default to #ec for Global Mesh
         }
         is com.campusmesh.android.geohash.ChannelID.Location -> {
             val geohash = (selectedChannel as com.campusmesh.android.geohash.ChannelID.Location).channel.geohash
             "#$geohash" to Color(0xFF00C851) // Green for location
         }
-        null -> "#mesh" to Color(0xFF007AFF) // Default to mesh
+        null -> "#ec" to Color(0xFF007AFF) // Default to #ec for Global Mesh
     }
     
     Button(

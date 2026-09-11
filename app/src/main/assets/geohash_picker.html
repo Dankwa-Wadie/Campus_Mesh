@@ -4,35 +4,100 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-      :root { --text: #333; }
-      html, body, #map { height: 100%; margin: 0; padding: 0; background: #ffffff; }
-      .leaflet-container { background: #ffffff; }
+      :root { 
+        --bg: #ffffff;
+        --text: #333333;
+        --border: #eeeeee;
+        --hover: #f5f5f5;
+        --shadow: rgba(0, 0, 0, 0.15);
+      }
+      .dark {
+        --bg: #1c1c1e;
+        --text: #ffffff;
+        --border: #2c2c2e;
+        --hover: #2c2c2e;
+        --shadow: rgba(0, 0, 0, 0.3);
+      }
+      html, body { height: 100%; margin: 0; padding: 0; background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      #map { height: 100%; width: 100%; background: var(--bg); }
+      .leaflet-container { background: var(--bg); }
       .leaflet-div-icon { background: transparent; border: none; }
-      .gh-label { background: transparent; border: none; pointer-events: none; filter: none; }
+      .gh-label { background: transparent; border: none; pointer-events: none; }
       .gh-text {
         color: #444444;
         font-weight: 700;
-        font-size: 14px;
+        font-size: 13px;
         line-height: 1;
         text-shadow: 0 0 2px #ffffff, 0 0 2px #ffffff, 0 0 2px #ffffff;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       }
       .dark .gh-text {
         color: #dddddd;
         text-shadow: 0 0 2px #000000, 0 0 2px #000000, 0 0 2px #000000;
       }
       .gh-text-selected {
-        color: #00C851 !important;
+        color: #32D74B !important; /* iOS Green */
+      }
+      
+      /* Search Controls */
+      .search-container {
+        position: absolute;
+        top: 12px;
+        left: 50px;
+        right: 12px;
+        z-index: 1000;
+        background: var(--bg);
+        border-radius: 12px;
+        box-shadow: 0 4px 12px var(--shadow);
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--border);
+        overflow: hidden;
+      }
+      #search-input {
+        border: none;
+        padding: 12px 16px;
+        font-size: 15px;
+        outline: none;
+        width: 100%;
+        background: transparent;
+        color: var(--text);
+        box-sizing: border-box;
+      }
+      .search-results-dropdown {
+        background: var(--bg);
+        max-height: 220px;
+        overflow-y: auto;
+        border-top: 1px solid var(--border);
+        display: none;
+      }
+      .search-result-item {
+        padding: 12px 16px;
+        font-size: 14px;
+        cursor: pointer;
+        border-bottom: 1px solid var(--border);
+        color: var(--text);
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+      }
+      .search-result-item:hover {
+        background: var(--hover);
       }
     </style>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   </head>
   <body>
+    <div class="search-container">
+      <input type="text" id="search-input" placeholder="Search campus, streets, buildings..." />
+      <div id="search-results" class="search-results-dropdown"></div>
+    </div>
+    
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-      // Minimal geohash (bounds/encode/adjacent)
+      // Minimal geohash implementation
       (function () {
         const base32 = "0123456789bcdefghjkmnpqrstuvwxyz";
         function bounds(geohash) {
@@ -70,22 +135,112 @@
         window.__geohash = { bounds, encode, adjacent };
       })();
 
-      const map = L.map("map", { zoomControl: true, minZoom: 2, maxZoom: 21 }).setView([0, 0], 3);
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png", { maxZoom: 21, attribution: "&copy; OpenStreetMap &copy; Carto", opacity: 1.0 }).addTo(map);
+      // Custom Leaflet TileLayer with Offline Caching (IndexedDB)
+      const OfflineTileLayer = L.TileLayer.extend({
+        createTile: function (coords, done) {
+          const tile = document.createElement('img');
+          const url = this.getTileUrl(coords);
+          const cacheKey = `tile-${coords.z}-${coords.x}-${coords.y}`;
+
+          // Initialize IndexedDB
+          const request = indexedDB.open('MapTileCache', 1);
+          request.onupgradeneeded = function (e) {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('tiles')) {
+              db.createObjectStore('tiles');
+            }
+          };
+
+          request.onsuccess = function (e) {
+            const db = e.target.result;
+            const tx = db.transaction('tiles', 'readonly');
+            const store = tx.objectStore('tiles');
+            const getReq = store.get(cacheKey);
+
+            getReq.onsuccess = function () {
+              if (getReq.result) {
+                const urlCreator = window.URL || window.webkitURL;
+                const imageUrl = urlCreator.createObjectURL(getReq.result);
+                tile.src = imageUrl;
+                done(null, tile);
+              } else {
+                fetch(url)
+                  .then(response => response.blob())
+                  .then(blob => {
+                    const urlCreator = window.URL || window.webkitURL;
+                    tile.src = urlCreator.createObjectURL(blob);
+                    done(null, tile);
+
+                    // Cache for future offline usage
+                    const saveTx = db.transaction('tiles', 'readwrite');
+                    const saveStore = saveTx.objectStore('tiles');
+                    saveStore.put(blob, cacheKey);
+                  })
+                  .catch(err => {
+                    tile.src = url;
+                    done(err, tile);
+                  });
+              }
+            };
+          };
+
+          request.onerror = function () {
+            tile.src = url;
+            done(null, tile);
+          };
+
+          return tile;
+        }
+      });
+
+      // Initialize map centered at GCTU Main Campus (Tesano)
+      const map = L.map("map", { zoomControl: false, minZoom: 2, maxZoom: 21 }).setView([5.5961352, -0.2234766], 16);
+      
+      // Load and add custom offline tile layer
+      new OfflineTileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png", {
+        maxZoom: 21,
+        attribution: "&copy; OpenStreetMap &copy; Carto"
+      }).addTo(map);
+
+      // Add Zoom control at bottom right
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
 
       let selectedGeohash = "";
       let gridLayer = L.layerGroup().addTo(map);
+      let geofenceLayer = L.layerGroup().addTo(map);
+      let pinMarker = null;
       let pinnedPrecision = null;
-      let outlineColor = "#00C851";
+
+      // School coordinates & configurations
+      const campuses = [
+        { name: "Main Campus (Tesano)", lat: 5.5961352, lon: -0.2234766, radius: 300 },
+        { name: "Abeka Campus (SITB)", lat: 5.5995349, lon: -0.2388291, radius: 200 }
+      ];
+
+      // Draw campus geofences
+      campuses.forEach(campus => {
+        L.circle([campus.lat, campus.lon], {
+          radius: campus.radius,
+          color: '#32D74B', // iOS green
+          fillColor: '#32D74B',
+          fillOpacity: 0.15,
+          weight: 1.5,
+          dashArray: '4, 4'
+        }).bindPopup(`<b>${campus.name}</b><br>Radius: ${campus.radius}m`).addTo(geofenceLayer);
+      });
+
+      function notifySelection() {
+        if (window.Android && window.Android.onGeohashChanged && selectedGeohash) {
+          window.Android.onGeohashChanged(selectedGeohash);
+        }
+      }
 
       function getNeighbors(hash) {
         const neighbors = [];
-        // N, S, E, W
         neighbors.push(window.__geohash.adjacent(hash, 'n'));
         neighbors.push(window.__geohash.adjacent(hash, 's'));
         neighbors.push(window.__geohash.adjacent(hash, 'e'));
         neighbors.push(window.__geohash.adjacent(hash, 'w'));
-        // Diagonals
         neighbors.push(window.__geohash.adjacent(window.__geohash.adjacent(hash, 'n'), 'e'));
         neighbors.push(window.__geohash.adjacent(window.__geohash.adjacent(hash, 'n'), 'w'));
         neighbors.push(window.__geohash.adjacent(window.__geohash.adjacent(hash, 's'), 'e'));
@@ -113,24 +268,12 @@
         return chosen;
       }
 
-      function notifySelection() {
-        if (window.Android && window.Android.onGeohashChanged && selectedGeohash) {
-          window.Android.onGeohashChanged(selectedGeohash);
-        }
-      }
-
-      function zoomForPrecision(p) {
-        if (p <= 1) return 1; if (p === 2) return 2; if (p === 3) return 3; if (p === 4) return 4;
-        if (p === 5) return 5; if (p === 6) return 7; if (p === 7) return 9; if (p === 8) return 11;
-        if (p === 9) return 13; if (p === 10) return 15; if (p === 11) return 17;
-        return 18;
-      }
-
       function updateOverlay() {
         gridLayer.clearLayers();
-        const c = map.getCenter();
+        const c = pinMarker ? pinMarker.getLatLng() : map.getCenter();
         const usePinned = pinnedPrecision !== null;
         const p = usePinned ? pinnedPrecision : pickPrecisionForViewport();
+        
         selectedGeohash = window.__geohash.encode(c.lat, c.lng, p);
         notifySelection();
 
@@ -141,43 +284,70 @@
         const allHashes = [selectedGeohash, ...getNeighbors(selectedGeohash)];
 
         const filteredHashes = allHashes.filter(gh => {
-            if (!gh) return false;
-            try {
-                const b = window.__geohash.bounds(gh);
-                const lon = (b.sw.lng + b.ne.lng) / 2;
-                const lat = (b.sw.lat + b.ne.lat) / 2;
-                if (Math.abs(lon - centerLon) > 180) return false; // anti-meridian wrap
-                if (Math.abs(lat - centerLat) > 90) return false; // pole wrap
-                return true;
-            } catch (e) { return false; }
+          if (!gh) return false;
+          try {
+            const b = window.__geohash.bounds(gh);
+            const lon = (b.sw.lng + b.ne.lng) / 2;
+            const lat = (b.sw.lat + b.ne.lat) / 2;
+            if (Math.abs(lon - centerLon) > 180) return false;
+            if (Math.abs(lat - centerLat) > 90) return false;
+            return true;
+          } catch (e) { return false; }
         });
 
         filteredHashes.forEach(gh => {
-            const b = window.__geohash.bounds(gh);
-            const sw = [b.sw.lat, b.sw.lng];
-            const ne = [b.ne.lat, b.ne.lng];
-            const isSelected = (gh === selectedGeohash);
+          const b = window.__geohash.bounds(gh);
+          const sw = [b.sw.lat, b.sw.lng];
+          const ne = [b.ne.lat, b.ne.lng];
+          const isSelected = (gh === selectedGeohash);
 
-            const rect = L.rectangle([sw, ne], {
-                color: isSelected ? outlineColor : '#cccccc',
-                weight: isSelected ? 3 : 1,
-                fillOpacity: 0.0,
-                opacity: 0.9,
-                interactive: false
-            });
-            gridLayer.addLayer(rect);
+          // Get human-friendly label if matches campus geohashes
+          let labelText = gh;
+          if (gh === "ebzzffv" || gh === "ebzzfft" || gh === "ebzzffm") {
+            labelText = "🏫 Main Campus";
+          }
 
-            const center = [(b.sw.lat + b.ne.lat) / 2, (b.sw.lng + b.ne.lng) / 2];
-            const labelClass = isSelected ? 'gh-text gh-text-selected' : 'gh-text';
-            const label = L.marker(center, {
-                icon: L.divIcon({
-                    className: 'gh-label',
-                    html: `<span class="${labelClass}">${gh}</span>`
-                }),
-                interactive: false
-            });
-            gridLayer.addLayer(label);
+          const rect = L.rectangle([sw, ne], {
+            color: isSelected ? '#32D74B' : '#cccccc',
+            weight: isSelected ? 3 : 1,
+            fillOpacity: isSelected ? 0.05 : 0.0,
+            opacity: 0.8,
+            interactive: false
+          });
+          gridLayer.addLayer(rect);
+
+          const center = [(b.sw.lat + b.ne.lat) / 2, (b.sw.lng + b.ne.lng) / 2];
+          const labelClass = isSelected ? 'gh-text gh-text-selected' : 'gh-text';
+          const label = L.marker(center, {
+            icon: L.divIcon({
+              className: 'gh-label',
+              html: `<span class="${labelClass}">${labelText}</span>`
+            }),
+            interactive: false
+          });
+          gridLayer.addLayer(label);
         });
+      }
+
+      // Handle map clicks to drop a pin
+      map.on("click", function(e) {
+        setPinAt(e.latlng.lat, e.latlng.lng);
+      });
+
+      function setPinAt(lat, lng) {
+        if (pinMarker) {
+          pinMarker.setLatLng([lat, lng]);
+        } else {
+          pinMarker = L.marker([lat, lng], { draggable: true }).addTo(map);
+          pinMarker.on("dragend", function() {
+            const pos = pinMarker.getLatLng();
+            setPinAt(pos.lat, pos.lng);
+          });
+        }
+        
+        // Center view on pin
+        map.panTo([lat, lng]);
+        updateOverlay();
       }
 
       map.on("movestart", () => { pinnedPrecision = null; });
@@ -185,12 +355,25 @@
       map.on("moveend", updateOverlay);
       map.on("zoomend", updateOverlay);
 
-      function setCenter(lat, lng) { map.setView([lat, lng], map.getZoom()); }
+      function setCenter(lat, lng) {
+        map.setView([lat, lng], map.getZoom());
+        setPinAt(lat, lng);
+      }
+      
       function setPrecision(p) {
         const clamped = Math.max(1, Math.min(12, p|0));
+        pinnedPrecision = clamped;
         const targetZoom = zoomForPrecision(clamped);
         map.setZoom(targetZoom);
       }
+
+      function zoomForPrecision(p) {
+        if (p <= 1) return 1; if (p === 2) return 2; if (p === 3) return 3; if (p === 4) return 4;
+        if (p === 5) return 5; if (p === 6) return 7; if (p === 7) return 9; if (p === 8) return 11;
+        if (p === 9) return 13; if (p === 10) return 15; if (p === 11) return 17;
+        return 18;
+      }
+
       function focusGeohash(gh) {
         if (!gh || typeof gh !== 'string') return;
         const g = gh.toLowerCase();
@@ -198,12 +381,19 @@
         pinnedPrecision = g.length;
         map.fitBounds([[b.sw.lat, b.sw.lng],[b.ne.lat, b.ne.lng]], { animate: false, padding: [8,8] });
         selectedGeohash = g;
+        
+        const center = [(b.sw.lat + b.ne.lat) / 2, (b.sw.lng + b.ne.lng) / 2];
+        setPinAt(center[0], center[1]);
       }
+
       function getGeohash() { return selectedGeohash; }
       
-      // Android side will call this with 'dark' or 'light'
       function setMapTheme(theme) {
-        document.body.className = theme;
+        if (theme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
       }
 
       window.setCenter = setCenter;
@@ -215,9 +405,60 @@
       function cleanup() {
         try { map.off(); } catch (_) {}
         try { gridLayer.clearLayers(); } catch (_) {}
+        try { geofenceLayer.clearLayers(); } catch (_) {}
         try { map.remove(); } catch (_) {}
       }
       window.cleanup = cleanup;
+
+      // Nominatim Search Integration
+      const searchInput = document.getElementById("search-input");
+      const searchResults = document.getElementById("search-results");
+      let searchTimeout = null;
+
+      searchInput.addEventListener("input", function() {
+        clearTimeout(searchTimeout);
+        const query = searchInput.value.trim();
+        if (query.length < 3) {
+          searchResults.style.display = "none";
+          return;
+        }
+        
+        searchTimeout = setTimeout(() => {
+          fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`)
+            .then(res => res.json())
+            .then(data => {
+              searchResults.innerHTML = "";
+              if (data && data.length > 0) {
+                searchResults.style.display = "block";
+                data.forEach(item => {
+                  const div = document.createElement("div");
+                  div.className = "search-result-item";
+                  div.innerText = item.display_name;
+                  div.addEventListener("click", function() {
+                    const lat = parseFloat(item.lat);
+                    const lon = parseFloat(item.lon);
+                    setCenter(lat, lon);
+                    searchResults.style.display = "none";
+                    searchInput.value = item.display_name;
+                  });
+                  searchResults.appendChild(div);
+                });
+              } else {
+                searchResults.style.display = "none";
+              }
+            })
+            .catch(() => {
+              searchResults.style.display = "none";
+            });
+        }, 400);
+      });
+
+      // Close dropdown when clicking outside
+      document.addEventListener("click", function(e) {
+        if (!e.target.closest(".search-container")) {
+          searchResults.style.display = "none";
+        }
+      });
 
       map.whenReady(updateOverlay);
     </script>

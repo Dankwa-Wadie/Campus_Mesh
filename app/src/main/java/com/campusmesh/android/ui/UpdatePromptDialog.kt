@@ -14,6 +14,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import com.campusmesh.android.data.AppUpdateNotice
 
 /**
@@ -45,13 +47,18 @@ fun UpdatePromptDialog(
     ) {
         Box(
             modifier = Modifier
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 10.dp)
                 .fillMaxWidth()
-                .shadow(8.dp, RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp))
+                .shadow(8.dp, RoundedCornerShape(16.dp))
                 .background(
                     brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                        listOf(Color(0xFF1A237E), Color(0xFF283593))
+                        listOf(
+                            Color(0xFF1A237E).copy(alpha = 0.85f),
+                            Color(0xFF283593).copy(alpha = 0.85f)
+                        )
                     ),
-                    shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)
+                    shape = RoundedCornerShape(16.dp)
                 )
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
@@ -75,8 +82,16 @@ fun UpdatePromptDialog(
                             fontSize = 11.sp
                         )
                     }
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                        Text("×", color = Color.White, fontSize = 20.sp)
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Dismiss",
+                            tint = Color.White.copy(alpha = 0.8f),
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
 

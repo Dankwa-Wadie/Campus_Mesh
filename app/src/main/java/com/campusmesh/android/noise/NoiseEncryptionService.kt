@@ -192,6 +192,8 @@ class NoiseEncryptionService(private val context: Context) {
      * Process an incoming handshake message
      * Returns response message if needed, null if handshake complete or failed
      */
+    fun getHandshakeHash(peerID: String): ByteArray? = sessionManager.getHandshakeHash(peerID)
+
     fun processHandshakeMessage(data: ByteArray, peerID: String): ByteArray? {
         return try {
             sessionManager.processHandshakeMessage(peerID, data)

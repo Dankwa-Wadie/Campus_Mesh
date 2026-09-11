@@ -51,19 +51,89 @@ class ChatViewModel(
         get() = unifiedMeshService
     private val debugManager by lazy { try { com.campusmesh.android.ui.debug.DebugSettingsManager.getInstance() } catch (e: Exception) { null } }
 
+    // Constructing this rebuilds EncryptedSharedPreferences, the Noise service and key material,
+    // so it is built once per ViewModel rather than once per outgoing message.
+    private val encryptionService by lazy {
+        com.campusmesh.android.crypto.EncryptionService(getApplication())
+    }
+
     companion object {
         private const val TAG = "ChatViewModel"
     }
 
+    // #gctu-announcements requires the device to be physically on either campus, and requires Lecturer role to post.
+    private fun isBlockedFromAnnouncements(channelOrNull: String?): Boolean {
+        if (channelOrNull != "#gctu-announcements") return false
+        val mode = com.campusmesh.android.services.AppStateStore.currentAppMode.value
+        val onCampus = mode == com.campusmesh.android.data.AppMode.MAIN_CAMPUS || mode == com.campusmesh.android.data.AppMode.ABEKA_CAMPUS
+        if (!onCampus) return true
+        return state.getRoleValue() != "Lecturer"
+    }
+
+    // #campus-mesh requires the device to be physically on GCTU Main Campus.
+    private fun isBlockedFromCampusMesh(channelOrNull: String?): Boolean =
+        channelOrNull == "#campus-mesh" &&
+            com.campusmesh.android.services.AppStateStore.currentAppMode.value != com.campusmesh.android.data.AppMode.MAIN_CAMPUS
+
+    // #abeka-it-business requires the device to be physically on GCTU Abeka Campus.
+    private fun isBlockedFromAbekaBusiness(channelOrNull: String?): Boolean =
+        channelOrNull == "#abeka-it-business" &&
+            com.campusmesh.android.services.AppStateStore.currentAppMode.value != com.campusmesh.android.data.AppMode.ABEKA_CAMPUS
+
     fun sendVoiceNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) {
+        if (isBlockedFromAnnouncements(channelOrNull)) {
+            val mode = com.campusmesh.android.services.AppStateStore.currentAppMode.value
+            val onCampus = mode == com.campusmesh.android.data.AppMode.MAIN_CAMPUS || mode == com.campusmesh.android.data.AppMode.ABEKA_CAMPUS
+            val msg = if (!onCampus) "📍 #gctu-announcements is only available while you're on campus." else "Only lecturers can post in #gctu-announcements."
+            messageManager.addSystemMessage(msg)
+            return
+        }
+        if (isBlockedFromCampusMesh(channelOrNull)) {
+            messageManager.addSystemMessage("📍 #campus-mesh is only available while you're on campus.")
+            return
+        }
+        if (isBlockedFromAbekaBusiness(channelOrNull)) {
+            messageManager.addSystemMessage("📍 #abeka-it-business is only available while you're on campus.")
+            return
+        }
         mediaSendingManager.sendVoiceNote(toPeerIDOrNull, channelOrNull, filePath)
     }
 
     fun sendFileNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) {
+        if (isBlockedFromAnnouncements(channelOrNull)) {
+            val mode = com.campusmesh.android.services.AppStateStore.currentAppMode.value
+            val onCampus = mode == com.campusmesh.android.data.AppMode.MAIN_CAMPUS || mode == com.campusmesh.android.data.AppMode.ABEKA_CAMPUS
+            val msg = if (!onCampus) "📍 #gctu-announcements is only available while you're on campus." else "Only lecturers can post in #gctu-announcements."
+            messageManager.addSystemMessage(msg)
+            return
+        }
+        if (isBlockedFromCampusMesh(channelOrNull)) {
+            messageManager.addSystemMessage("📍 #campus-mesh is only available while you're on campus.")
+            return
+        }
+        if (isBlockedFromAbekaBusiness(channelOrNull)) {
+            messageManager.addSystemMessage("📍 #abeka-it-business is only available while you're on campus.")
+            return
+        }
         mediaSendingManager.sendFileNote(toPeerIDOrNull, channelOrNull, filePath)
     }
 
     fun sendImageNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) {
+        if (isBlockedFromAnnouncements(channelOrNull)) {
+            val mode = com.campusmesh.android.services.AppStateStore.currentAppMode.value
+            val onCampus = mode == com.campusmesh.android.data.AppMode.MAIN_CAMPUS || mode == com.campusmesh.android.data.AppMode.ABEKA_CAMPUS
+            val msg = if (!onCampus) "📍 #gctu-announcements is only available while you're on campus." else "Only lecturers can post in #gctu-announcements."
+            messageManager.addSystemMessage(msg)
+            return
+        }
+        if (isBlockedFromCampusMesh(channelOrNull)) {
+            messageManager.addSystemMessage("📍 #campus-mesh is only available while you're on campus.")
+            return
+        }
+        if (isBlockedFromAbekaBusiness(channelOrNull)) {
+            messageManager.addSystemMessage("📍 #abeka-it-business is only available while you're on campus.")
+            return
+        }
         mediaSendingManager.sendImageNote(toPeerIDOrNull, channelOrNull, filePath)
     }
 
@@ -227,6 +297,35 @@ class ChatViewModel(
     init {
         // Note: Mesh service delegate is now set by MainActivity
         loadAndInitialize()
+        com.campusmesh.android.call.CallSignalingManager.initialize(
+            context = application.applicationContext,
+            mesh = mesh,
+            nicknameProvider = { state.getNicknameValue() },
+            peerNicknameProvider = { peerID -> state.peerNicknames.value[peerID] ?: peerID }
+        )
+        com.campusmesh.android.call.CallSignalingManager.setOnCallEndedListener { peerID, reason, durationMs ->
+            val text = when (reason) {
+                "ended" -> {
+                    val totalSeconds = durationMs / 1000
+                    "📞 Voice call · %d:%02d".format(totalSeconds / 60, totalSeconds % 60)
+                }
+                "declined" -> "📞 Call declined"
+                "busy" -> "📞 Peer was busy"
+                "missed" -> "📞 Missed call"
+                "no_answer" -> "📞 No answer"
+                else -> "📞 Call failed"
+            }
+            val callMessage = BitchatMessage(
+                sender = "system",
+                content = text,
+                timestamp = Date(),
+                isRelay = false,
+                isPrivate = true,
+                recipientNickname = state.getNicknameValue(),
+                senderPeerID = peerID
+            )
+            messageManager.addPrivateMessageNoUnread(peerID, callMessage)
+        }
         // Hydrate UI state from process-wide AppStateStore to survive Activity recreation
         viewModelScope.launch {
             try { com.campusmesh.android.services.AppStateStore.peers.collect { peers ->
@@ -574,16 +673,43 @@ class ChatViewModel(
                 router.sendPrivate(messageContent, peerID, recipientNicknameParam, messageId)
             }
         } else {
-            // Check if we're in a location channel
+            // A joined classic/IRC channel (e.g. a pinned Main Campus sub-channel like
+            // #gctu-announcements) takes priority over the active geohash location channel.
+            // This used to check selectedLocationChannel first, so opening a Main Campus
+            // sub-channel while the Main Campus geohash channel was still selected (the normal
+            // flow: tap Main Campus, then tap a sub-channel under it) silently routed every
+            // message to the geohash channel via Nostr instead of broadcasting it over BLE mesh
+            // with the sub-channel tag - so two phones physically next to each other, both
+            // sitting in the same pinned sub-channel, never actually saw each other's messages;
+            // only the plain Mesh tab (no geohash selected) worked. This now matches the
+            // display-side priority already used by ChatScreen.kt's displayMessages.
             val selectedLocationChannel = state.selectedLocationChannel.value
-            if (selectedLocationChannel is com.campusmesh.android.geohash.ChannelID.Location) {
+            if (currentChannelValue == null && selectedLocationChannel is com.campusmesh.android.geohash.ChannelID.Location) {
                 // Send to geohash channel via Nostr ephemeral event
                 geohashViewModel.sendGeohashMessage(content, selectedLocationChannel.channel, mesh.myPeerID, state.getNicknameValue())
             } else {
+                // Enforce role-based and geofenced posting guards for classic/IRC channels
+                if (isBlockedFromAnnouncements(currentChannelValue)) {
+                    val mode = com.campusmesh.android.services.AppStateStore.currentAppMode.value
+                    val onCampus = mode == com.campusmesh.android.data.AppMode.MAIN_CAMPUS || mode == com.campusmesh.android.data.AppMode.ABEKA_CAMPUS
+                    val msg = if (!onCampus) "📍 #gctu-announcements is only available while you're on campus." else "Only lecturers can post in #gctu-announcements."
+                    messageManager.addSystemMessage(msg)
+                    return
+                }
+
+                if (isBlockedFromCampusMesh(currentChannelValue)) {
+                    messageManager.addSystemMessage("📍 #campus-mesh is only available while you're on campus.")
+                    return
+                }
+
+                if (isBlockedFromAbekaBusiness(currentChannelValue)) {
+                    messageManager.addSystemMessage("📍 #abeka-it-business is only available while you're on campus.")
+                    return
+                }
+
                 // Prepare channel prefixing or official announcement signatures
                 val payloadToSend = if (currentChannelValue == "#gctu-announcements" || content.startsWith("/alert ")) {
                     val msgText = if (content.startsWith("/alert ")) content.removePrefix("/alert ").trim() else content
-                    val encryptionService = com.campusmesh.android.crypto.EncryptionService(getApplication())
                     val mySigningPubKey = encryptionService.getSigningPublicKey() ?: ByteArray(0)
                     val mySigningPubKeyBase64 = android.util.Base64.encodeToString(mySigningPubKey, android.util.Base64.NO_WRAP)
                     
@@ -643,6 +769,11 @@ class ChatViewModel(
                             targetChannel,
                             state.getNicknameValue(),
                             mesh.myPeerID,
+                            // NOTE: the mesh transport only exposes a String `sendMessage`, so the
+                            // ciphertext produced here currently can't be put on the wire and this
+                            // still sends plaintext. Carrying `encryptedData` end-to-end needs a
+                            // binary-payload message type in the protocol layer; until that exists,
+                            // password-protected channels are NOT encrypted in transit.
                             onEncryptedPayload = { encryptedData ->
                                 mesh.sendMessage(payloadToSend, mentions, targetChannel)
                             },
@@ -656,6 +787,28 @@ class ChatViewModel(
                 } else {
                     messageManager.addMessage(message)
                     mesh.sendMessage(payloadToSend, mentions, null)
+                    
+                    val selectedLocation = state.selectedLocationChannel.value
+                    if (selectedLocation is com.campusmesh.android.geohash.ChannelID.Mesh) {
+                        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                            try {
+                                val geohash = "ec"
+                                val identity = com.campusmesh.android.nostr.NostrIdentityBridge.deriveIdentity(forGeohash = geohash, context = getApplication())
+                                val event = com.campusmesh.android.nostr.NostrProtocol.createEphemeralGeohashEvent(
+                                    content = cleanContent,
+                                    geohash = geohash,
+                                    senderIdentity = identity,
+                                    nickname = state.getNicknameValue(),
+                                    teleported = false
+                                )
+                                val relayManager = com.campusmesh.android.nostr.NostrRelayManager.getInstance(getApplication())
+                                relayManager.sendEventToGeohash(event, geohash, includeDefaults = false, nRelays = 5)
+                                Log.d(TAG, "Sent Global Mesh message to Nostr ec geohash")
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed to send global message to Nostr: ${e.message}")
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1002,6 +1155,10 @@ class ChatViewModel(
     override fun didReceiveVerifyResponse(peerID: String, payload: ByteArray, timestampMs: Long) {
         verificationHandler.didReceiveVerifyResponse(peerID, payload)
     }
+
+    override fun didReceiveCallSignal(peerID: String, payload: ByteArray, timestampMs: Long) {
+        com.campusmesh.android.call.CallSignalingManager.handleIncoming(peerID, payload, timestampMs)
+    }
     
     override fun decryptChannelMessage(encryptedContent: ByteArray, channel: String): String? {
         return meshDelegateHandler.decryptChannelMessage(encryptedContent, channel)
@@ -1092,6 +1249,12 @@ class ChatViewModel(
         meshService = freshMeshService
         unifiedMeshService = freshUnifiedMeshService
         mesh.delegate = this
+        com.campusmesh.android.call.CallSignalingManager.initialize(
+            context = getApplication<Application>().applicationContext,
+            mesh = mesh,
+            nicknameProvider = { state.getNicknameValue() },
+            peerNicknameProvider = { peerID -> state.peerNicknames.value[peerID] ?: peerID }
+        )
 
         // Restart mesh operations with new identity
         mesh.startServices()
@@ -1284,9 +1447,13 @@ class ChatViewModel(
                 endPrivateChat()
                 true
             }
-            // Exit channel view
+            // Exit channel view - go straight back to the chat list/home screen rather than
+            // falling back into the plain Mesh timeline first (which used to require a second
+            // back press to actually leave). This is the expected path from a pinned Main
+            // Campus sub-channel like #gctu-announcements.
             state.getCurrentChannelValue() != null -> {
                 switchToChannel(null)
+                returnToChatList()
                 true
             }
             // Conversation detail is showing (chat list is the home screen now) - return to it.

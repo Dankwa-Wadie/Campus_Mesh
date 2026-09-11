@@ -219,11 +219,6 @@ open class EncryptionService(private val context: Context) {
      * Note: This is now done at the packet level, not per-message
      */
     @Throws(Exception::class)
-    fun verify(signature: ByteArray, data: ByteArray, peerID: String): Boolean {
-        // Note: In Noise protocol, authentication is built into the transport
-        // Messages are authenticated automatically when decrypted
-        return hasEstablishedSession(peerID)
-    }
     
     // MARK: - Noise Protocol Interface
     
@@ -273,6 +268,8 @@ open class EncryptionService(private val context: Context) {
     /**
      * Process an incoming handshake message
      */
+    fun getHandshakeHash(peerID: String): ByteArray? = noiseService.getHandshakeHash(peerID)
+
     fun processHandshakeMessage(data: ByteArray, peerID: String): ByteArray? {
         Log.d(TAG, "🤝 Processing handshake message from $peerID")
         return noiseService.processHandshakeMessage(data, peerID)
@@ -300,7 +297,7 @@ open class EncryptionService(private val context: Context) {
     // MARK: - Channel Encryption
     
     /**
-     * Set password for a channel (derives encryption key using Argon2id)
+     * Set password for a channel (derives encryption key using PBKDF2-HMAC-SHA256)
      */
     fun setChannelPassword(password: String, channel: String) {
         noiseService.setChannelPassword(password, channel)

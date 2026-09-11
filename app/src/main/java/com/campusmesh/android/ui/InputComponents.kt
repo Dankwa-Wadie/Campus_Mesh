@@ -178,6 +178,11 @@ fun MessageInput(
     currentChannel: String?,
     nickname: String,
     showMediaButtons: Boolean,
+    readOnly: Boolean = false,
+    // Shown as the placeholder when readOnly - different channels lock the composer for different
+    // reasons (lecturer-only #gctu-announcements vs. on-campus-only #campus-mesh), so this is the
+    // caller's responsibility rather than a single hardcoded string here.
+    readOnlyMessage: String = "🔒 Only lecturers can post here",
     modifier: Modifier = Modifier
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -208,11 +213,12 @@ fun MessageInput(
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
+                readOnly = readOnly,
                 textStyle = MaterialTheme.typography.bodyMedium.copy(
                     color = colorScheme.primary,
                     fontFamily = FontFamily.SansSerif
                 ),
-                cursorBrush = SolidColor(if (isRecording) Color.Transparent else colorScheme.primary),
+                cursorBrush = SolidColor(if (isRecording || readOnly) Color.Transparent else colorScheme.primary),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { 
                     if (hasText) onSend() // Only send if there's text
@@ -237,7 +243,7 @@ fun MessageInput(
             // Show placeholder when there's no text and not recording
             if (value.text.isEmpty() && !isRecording) {
                 Text(
-                    text = stringResource(R.string.type_a_message_placeholder),
+                    text = if (readOnly) readOnlyMessage else stringResource(R.string.type_a_message_placeholder),
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontFamily = FontFamily.SansSerif
                     ),
@@ -274,8 +280,9 @@ fun MessageInput(
         
         Spacer(modifier = Modifier.width(8.dp)) // Reduced spacing
         
-        // Voice and image buttons when no text (only visible in Mesh chat)
-        if (value.text.isEmpty() && showMediaButtons) {
+        // Voice and image buttons when no text (only visible in Mesh chat) - hidden entirely
+        // when readOnly (e.g. a student viewing #gctu-announcements), same as the send button.
+        if (!readOnly && value.text.isEmpty() && showMediaButtons) {
             // Hold-to-record microphone
             // Was: a hardcoded green pair gated on `colorScheme.background == Color.Black`, a proxy
             // for dark mode that broke once Theme.kt's dark background stopped being pure black

@@ -22,10 +22,31 @@ class OtaUpdateManager(private val context: Context) {
     companion object {
         private const val TAG = "OtaUpdateManager"
         const val CHUNK_SIZE = 256 * 1024 // 256 KB chunks
+    }
 
-        // Hardcoded version metadata for presentation demo
-        const val CURRENT_VERSION_CODE = 180
-        const val CURRENT_VERSION_HASH = "8f3c7d9a1b5e2f6c0d8b7a4c3e2f1a0d9b8c7a6e5f4d3c2b1a0f9e8d7c6b5a4f"
+    /**
+     * versionCode of the running build, read from the package rather than hardcoded - peers use
+     * this (via /api/ota/info) to decide whether this device has something newer to offer them.
+     */
+    fun getCurrentVersionCode(): Long {
+        return try {
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                info.versionCode.toLong()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read version code: ${e.message}")
+            0L
+        }
+    }
+
+    /** SHA-256 of the running APK, computed on demand so it always matches what we actually serve. */
+    fun getCurrentVersionHash(): String {
+        val apk = getLocalApkFile() ?: return ""
+        return computeSha256(apk)
     }
 
     /**
@@ -105,15 +126,22 @@ class OtaUpdateManager(private val context: Context) {
     class DownloadSession(
         val versionHash: String,
         val totalChunks: Int,
-        val destinationFile: File
+        val destinationFile: File,
+        /**
+         * Exact byte length of the finished APK. The final chunk is almost always partial, so
+         * `totalChunks * CHUNK_SIZE` is the wrong figure to compare a part-downloaded file
+         * against - it essentially never matches, which silently disabled resume entirely.
+         * Left at -1 when the size isn't known, in which case resume is skipped rather than guessed.
+         */
+        val totalBytes: Long = -1L
     ) {
         val chunkMap = BooleanArray(totalChunks)
         var isCompleted = false
 
         init {
-            // If file already exists, open and check size to resume
-            if (destinationFile.exists() && destinationFile.length() == (totalChunks * CHUNK_SIZE).toLong()) {
-                // Initialize chunk map as fully downloaded
+            // Size alone only tells us the bytes are all present; verifyUpdate still has to hash
+            // the file before anything is installed.
+            if (totalBytes > 0 && destinationFile.exists() && destinationFile.length() == totalBytes) {
                 chunkMap.fill(true)
                 isCompleted = true
             }
@@ -182,7 +210,13 @@ class OtaUpdateManager(private val context: Context) {
             val candidateDigests = candidateCerts.map { sha256Hex(it) }.toSet()
             val matches = installedDigests.intersect(candidateDigests).isNotEmpty()
 
-            Log.i(TAG, if (matches) "✅ APK signature matches installed app's signer" else "❌ APK signature does NOT match installed app's signer — refusing to install")
+            // Failure logged at warn, not info: Log.i is stripped from release builds, and a
+            // refused install is exactly the event you need a record of in the field.
+            if (matches) {
+                Log.i(TAG, "✅ APK signature matches installed app's signer")
+            } else {
+                Log.w(TAG, "❌ APK signature does NOT match installed app's signer — refusing to install")
+            }
             matches
         } catch (e: Exception) {
             Log.e(TAG, "Signature verification failed with exception (treated as untrusted): ${e.message}", e)
@@ -200,11 +234,39 @@ class OtaUpdateManager(private val context: Context) {
             Log.w(TAG, "Refusing install: SHA-256 mismatch")
             return null
         }
-        if (!verifyApkSignature(session.destinationFile)) {
+        return verifyAndPrepareInstall(session.destinationFile, expectedHash = null)
+    }
+
+    /**
+     * File-based counterpart of [verifyAndPrepareInstall] for APKs that arrived over HTTPS from
+     * GitHub Releases rather than in mesh chunks. [expectedHash] is checked when the release
+     * publishes one; the signing-certificate check is mandatory either way, since that is what
+     * actually proves the APK came from whoever signed the running build.
+     *
+     * Returns null - and installs nothing - if either check fails.
+     */
+    fun verifyAndPrepareInstall(apkFile: File, expectedHash: String?): Intent? {
+        if (!apkFile.exists() || apkFile.length() == 0L) {
+            Log.w(TAG, "Refusing install: APK file missing or empty")
+            return null
+        }
+
+        if (!expectedHash.isNullOrBlank()) {
+            val computed = computeSha256(apkFile)
+            if (!computed.equals(expectedHash, ignoreCase = true)) {
+                Log.w(TAG, "Refusing install: SHA-256 mismatch (computed=$computed, expected=$expectedHash)")
+                return null
+            }
+        } else {
+            Log.w(TAG, "No expected SHA-256 published for this release; relying on signing-certificate check alone")
+        }
+
+        if (!verifyApkSignature(apkFile)) {
             Log.w(TAG, "Refusing install: signing certificate mismatch")
             return null
         }
-        return buildInstallIntent(session.destinationFile)
+
+        return buildInstallIntent(apkFile)
     }
 
     /**

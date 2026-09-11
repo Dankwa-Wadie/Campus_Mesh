@@ -24,11 +24,43 @@ import java.nio.ByteOrder
  * receiver can ask for only the chunks it's still missing via [Request] instead of restarting.
  */
 object FileChunkProtocol {
-    /** Files at or below this size keep using the original single-packet path unchanged. */
-    const val CHUNK_THRESHOLD = 96 * 1024
+    /**
+     * Files at or below this size keep using the original single-packet path unchanged.
+     *
+     * Was 96 KiB, which meant a typical downscaled outgoing photo (maxDim 512px, quality 85 -
+     * commonly 20-90 KiB, see [com.campusmesh.android.features.media.ImageUtils]) stayed on the
+     * legacy path: one [BitchatFilePacket] fragmented into 40-200+ raw BLE-MTU fragments by
+     * [com.campusmesh.android.mesh.FragmentManager], ALL of which must land before the receiver can
+     * reassemble anything - there's no per-fragment retry, and BLE notify delivery isn't guaranteed,
+     * so losing even one fragment silently drops the entire photo after the 30s reassembly timeout
+     * with no error shown to either side (it just never arrives). Lowered so photos actually take
+     * the chunked+resumable path below, which caps each burst at [CHUNK_SIZE] (~35 fragments) and
+     * lets the receiver ask for just the missing chunks instead of losing the whole file.
+     */
+    const val CHUNK_THRESHOLD = 20 * 1024
 
     /** Size of each chunk for files above [CHUNK_THRESHOLD]. */
     const val CHUNK_SIZE = 16 * 1024
+
+    // Bound disk usage and the size of retry bitmaps/lists before trusting peer metadata.
+    const val MAX_FILE_SIZE = 64L * 1024 * 1024
+    const val MAX_CHUNKS = 4096
+
+    fun isValidInit(init: Init): Boolean =
+        init.transferId.matches(Regex("[0-9a-fA-F]{64}")) &&
+            init.fileSize in 1..MAX_FILE_SIZE &&
+            init.chunkSize in 1..CHUNK_SIZE &&
+            init.totalChunks in 1..MAX_CHUNKS &&
+            init.totalChunks.toLong() == (init.fileSize + init.chunkSize - 1) / init.chunkSize &&
+            init.fileName.toByteArray(Charsets.UTF_8).size <= 255 &&
+            init.realMimeType.toByteArray(Charsets.UTF_8).size <= 255
+
+    fun isValidChunk(chunk: Chunk, init: Init): Boolean {
+        if (!isValidInit(init) || !chunk.transferId.equals(init.transferId, ignoreCase = true) ||
+            chunk.chunkIndex !in 0 until init.totalChunks) return false
+        val offset = chunk.chunkIndex.toLong() * init.chunkSize
+        return chunk.data.size.toLong() == minOf(init.chunkSize.toLong(), init.fileSize - offset)
+    }
 
     const val MIME_INIT = "application/x-campusmesh-chunk-init"
     const val MIME_CHUNK = "application/x-campusmesh-chunk-data"
@@ -124,7 +156,7 @@ object FileChunkProtocol {
         val size = buf.long
         val chunkSize = buf.int
         val total = buf.int
-        if (id.isBlank() || total <= 0 || chunkSize <= 0) null else Init(id, name, mime, size, chunkSize, total)
+        Init(id, name, mime, size, chunkSize, total).takeIf { isValidInit(it) }
     } catch (_: Exception) {
         null
     }
@@ -168,9 +200,9 @@ object FileChunkProtocol {
         val buf = ByteBuffer.wrap(b).order(ByteOrder.BIG_ENDIAN)
         val id = buf.getStr()
         val count = buf.int
-        if (id.isBlank() || count < 0 || count > buf.remaining() / 4) null else {
+        if (id.isBlank() || count < 0 || count > MAX_CHUNKS || count > buf.remaining() / 4) null else {
             val missing = (0 until count).map { buf.int }
-            Request(id, missing)
+            Request(id, missing).takeIf { missing.all { index -> index in 0 until MAX_CHUNKS } }
         }
     } catch (_: Exception) {
         null

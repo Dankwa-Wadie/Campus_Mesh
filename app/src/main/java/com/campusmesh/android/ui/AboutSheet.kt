@@ -40,7 +40,7 @@ import com.campusmesh.android.net.ArtiTorManager
  * Feature row for displaying app capabilities
  */
 @Composable
-private fun FeatureRow(
+internal fun FeatureRow(
     icon: ImageVector,
     title: String,
     subtitle: String
@@ -83,7 +83,7 @@ private fun FeatureRow(
  * Theme selection chip with Apple-like styling
  */
 @Composable
-private fun ThemeChip(
+internal fun ThemeChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
@@ -123,7 +123,7 @@ private fun ThemeChip(
  * Apple-like design with proper spacing
  */
 @Composable
-private fun SettingsToggleRow(
+internal fun SettingsToggleRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
@@ -191,8 +191,12 @@ private fun SettingsToggleRow(
 }
 
 /**
- * Apple-like About/Settings Sheet with high-quality design
- * Professional UX optimized for checkout scenarios
+ * Apple-like About/Settings Sheet with high-quality design.
+ *
+ * NOT CURRENTLY INVOKED ANYWHERE - its content (app info, theme picker, mesh/network toggles,
+ * emergency data deletion) was moved into SettingsScreen.kt for discoverability (reachable from
+ * the chat list's gear icon instead of a hidden triple-tap-the-title gesture). Left in place
+ * because [FeatureRow]/[ThemeChip]/[SettingsToggleRow] below are still used by SettingsScreen.kt.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

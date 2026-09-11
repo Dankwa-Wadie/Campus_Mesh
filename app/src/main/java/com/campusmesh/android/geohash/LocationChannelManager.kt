@@ -93,7 +93,7 @@ class LocationChannelManager private constructor(private val context: Context) {
     private val _selectedChannel = MutableStateFlow<ChannelID>(ChannelID.Mesh)
     val selectedChannel: StateFlow<ChannelID> = _selectedChannel
 
-    private val _teleported = MutableStateFlow(false)
+    private val _teleported = MutableStateFlow(true)
     val teleported: StateFlow<Boolean> = _teleported
 
     private val _locationNames = MutableStateFlow<Map<GeohashChannelLevel, String>>(emptyMap())
@@ -240,7 +240,7 @@ class LocationChannelManager private constructor(private val context: Context) {
         lastLocation?.let { location ->
             when (channel) {
                 is ChannelID.Mesh -> {
-                    _teleported.value = false
+                    _teleported.value = true
                 }
                 is ChannelID.Location -> {
                     val currentGeohash = Geohash.encode(
@@ -293,6 +293,9 @@ class LocationChannelManager private constructor(private val context: Context) {
         _availableChannels.value = emptyList()
         _locationNames.value = emptyMap()
         
+        // Reset app mode to general mesh (cannot verify campus presence without location)
+        com.campusmesh.android.services.AppStateStore.setAppMode(com.campusmesh.android.data.AppMode.GENERAL_MESH)
+        
         // If user had a location channel selected, switch back to mesh
         if (_selectedChannel.value is ChannelID.Location) {
             select(ChannelID.Mesh)
@@ -342,51 +345,31 @@ class LocationChannelManager private constructor(private val context: Context) {
         }
     }
 
-    private var lastEnteredCampus: String? = null
+    private val campusPresenceTracker = CampusPresenceTracker()
+    private var presenceExpiryJob: kotlinx.coroutines.Job? = null
 
-    /**
-     * Soft-geofence check: on every location update, compares distance to each configured
-     * campus (from school_config.json, not hardcoded here) and publishes the resulting
-     * [AppMode] to [AppStateStore] so the rest of the app (channel list, map gating, etc.)
-     * reacts automatically. Falls back to GENERAL_MESH once the device leaves all campus radii.
-     *
-     * This does not fight a manual mode override: it only runs when the location provider
-     * delivers a new fix, and [AppStateStore.setAppMode] can be called directly elsewhere
-     * (e.g. a manual toggle in Settings) between fixes.
-     */
     private fun checkSoftGeofences(location: Location) {
         val campuses = ConfigLoader.load(context).campuses
-        val mainCampus = campuses.getOrNull(0)
-        val abekaCampus = campuses.getOrNull(1)
-
-        var enteredCampus: String? = null
-        var enteredMode = AppMode.GENERAL_MESH
-
-        val distToMain = mainCampus?.let { distanceToMeters(location, it.lat, it.lon) }
-        val distToAbeka = abekaCampus?.let { distanceToMeters(location, it.lat, it.lon) }
-
-        if (mainCampus != null && distToMain != null && distToMain <= mainCampus.radiusMeters) {
-            enteredCampus = mainCampus.name
-            enteredMode = AppMode.MAIN_CAMPUS
-        } else if (abekaCampus != null && distToAbeka != null && distToAbeka <= abekaCampus.radiusMeters) {
-            enteredCampus = abekaCampus.name
-            enteredMode = AppMode.ABEKA_CAMPUS
+        val modes = listOf(AppMode.MAIN_CAMPUS, AppMode.ABEKA_CAMPUS)
+        val boundaries = campuses.take(modes.size).mapIndexed { index, campus ->
+            CampusPresenceTracker.Boundary(modes[index], campus.name,
+                distanceToMeters(location, campus.lat, campus.lon), campus.radiusMeters.toDouble())
         }
-
-        if (enteredCampus != null && enteredCampus != lastEnteredCampus) {
-            lastEnteredCampus = enteredCampus
-            AppStateStore.setAppMode(enteredMode)
-            scope.launch(Dispatchers.Main) {
-                android.widget.Toast.makeText(
-                    context,
-                    "📍 Entered $enteredCampus. Offline map activated.",
-                    android.widget.Toast.LENGTH_LONG
-                ).show()
+        val now = android.os.SystemClock.elapsedRealtime()
+        AppStateStore.setCampusPresence(campusPresenceTracker.update(
+            boundaries,
+            if (location.hasAccuracy()) location.accuracy else null,
+            location.elapsedRealtimeNanos / 1_000_000,
+            now
+        ))
+        // Expiry must run even when no further location callback arrives.
+        if (presenceExpiryJob?.isActive != true) {
+            presenceExpiryJob = scope.launch {
+                while (true) {
+                    kotlinx.coroutines.delay(5_000)
+                    AppStateStore.setCampusPresence(campusPresenceTracker.snapshot(android.os.SystemClock.elapsedRealtime()))
+                }
             }
-        } else if (enteredCampus == null && lastEnteredCampus != null) {
-            Log.d(TAG, "Left campus: $lastEnteredCampus")
-            lastEnteredCampus = null
-            AppStateStore.setAppMode(AppMode.GENERAL_MESH)
         }
     }
 
@@ -454,7 +437,7 @@ class LocationChannelManager private constructor(private val context: Context) {
         val selectedChannelValue = _selectedChannel.value
         when (selectedChannelValue) {
             is ChannelID.Mesh -> {
-                _teleported.value = false
+                _teleported.value = true
             }
             is ChannelID.Location -> {
                 val currentGeohash = Geohash.encode(
@@ -615,7 +598,7 @@ class LocationChannelManager private constructor(private val context: Context) {
     fun clearPersistedChannel() {
         dataManager?.clearLastGeohashChannel()
         _selectedChannel.value = ChannelID.Mesh
-        _teleported.value = false
+        _teleported.value = true
         Log.d(TAG, "Cleared persisted channel selection")
     }
 
@@ -653,6 +636,9 @@ class LocationChannelManager private constructor(private val context: Context) {
     fun cleanup() {
         Log.d(TAG, "Cleaning up LocationChannelManager")
         endLiveRefresh()
+        presenceExpiryJob?.cancel()
+        presenceExpiryJob = null
+        AppStateStore.setCampusPresence(CampusPresence())
         locationProvider.cancel()
         
         geocodingJob?.cancel()

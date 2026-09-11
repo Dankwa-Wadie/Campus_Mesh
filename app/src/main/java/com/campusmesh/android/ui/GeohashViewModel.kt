@@ -118,23 +118,24 @@ class GeohashViewModel(
     private fun startGlobalPresenceHeartbeat() {
         globalPresenceJob?.cancel()
         globalPresenceJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            // Reactively restart heartbeat whenever available channels change
-            locationChannelManager?.availableChannels?.collectLatest { channels ->
-                // Filter for REGION (2), PROVINCE (4), CITY (5) - precision <= 5
-                val targetGeohashes = channels.filter { it.level.precision <= 5 }.map { it.geohash }
-
+            val channelsFlow = locationChannelManager?.availableChannels ?: kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+            val selectedFlow = locationChannelManager?.selectedChannel ?: kotlinx.coroutines.flow.MutableStateFlow(com.campusmesh.android.geohash.ChannelID.Mesh)
+            
+            kotlinx.coroutines.flow.combine(channelsFlow, selectedFlow) { channels, selected ->
+                val targetGeohashes = channels.filter { it.level.precision <= 5 }.map { it.geohash }.toMutableSet()
+                if (selected is com.campusmesh.android.geohash.ChannelID.Mesh) {
+                    targetGeohashes.add("ec")
+                }
+                targetGeohashes.toList()
+            }.collectLatest { targetGeohashes ->
                 if (targetGeohashes.isNotEmpty()) {
-                    // Enter heartbeat loop for this set of channels
-                    // If channels change (e.g. user moves), collectLatest cancels this loop and starts a new one immediately
                     while (true) {
-                        // Randomize loop interval (40-80s, average 60s)
                         val loopInterval = secureRandom.nextLong(40000L, 80000L)
                         var timeSpent = 0L
 
                         try {
                             Log.v(TAG, "💓 Broadcasting global presence to ${targetGeohashes.size} channels")
                             targetGeohashes.forEach { geohash ->
-                                // Decorrelate individual broadcasts with random delay (1s-5s)
                                 val stepDelay = secureRandom.nextLong(1000L, 10000L)
                                 delay(stepDelay)
                                 timeSpent += stepDelay
@@ -145,12 +146,11 @@ class GeohashViewModel(
                             Log.w(TAG, "Global presence heartbeat error: ${e.message}")
                         }
                         
-                        // Wait remaining time to satisfy target average cadence
                         val remaining = loopInterval - timeSpent
                         if (remaining > 0) {
                             delay(remaining)
                         } else {
-                            delay(10000L) // Minimum guard delay
+                            delay(10000L)
                         }
                     }
                 }
@@ -347,11 +347,37 @@ class GeohashViewModel(
 
         when (channel) {
             is com.campusmesh.android.geohash.ChannelID.Mesh -> {
-                Log.d(TAG, "📡 Switched to mesh channel")
-                repo.setCurrentGeohash(null)
-                notificationManager.setCurrentGeohash(null)
+                Log.d(TAG, "📡 Switched to mesh channel (using geohash ec)")
+                val geohash = "ec"
+                repo.setCurrentGeohash(geohash)
+                notificationManager.setCurrentGeohash(geohash)
+                notificationManager.clearNotificationsForGeohash(geohash)
                 notificationManager.clearMeshMentionNotifications()
                 repo.refreshGeohashPeople()
+
+                // Subscribe to geohash #ec on Nostr so users can receive events sent to #ec
+                startGeoParticipantsTimer()
+                viewModelScope.launch {
+                    val subId = "geohash-$geohash"; currentGeohashSubId = subId
+                    subscriptionManager.subscribeGeohash(
+                        geohash = geohash,
+                        sinceMs = System.currentTimeMillis() - 3600000L,
+                        limit = 200,
+                        id = subId,
+                        handler = { event -> geohashMessageHandler.onEvent(event, geohash) }
+                    )
+                    val dmIdentity = NostrIdentityBridge.deriveIdentity(geohash, getApplication())
+                    val dmSubId = "geo-dm-$geohash"; currentDmSubId = dmSubId
+                    subscriptionManager.subscribeGiftWraps(
+                        pubkey = dmIdentity.publicKeyHex,
+                        sinceMs = System.currentTimeMillis() - 172800000L,
+                        id = dmSubId,
+                        handler = { event -> dmHandler.onGiftWrap(event, geohash, dmIdentity) }
+                    )
+                    val alias = "nostr_${dmIdentity.publicKeyHex.substring(0, 16)}"
+                    GeohashAliasRegistry.put(alias, dmIdentity.publicKeyHex)
+                    GeohashConversationRegistry.set(alias, geohash)
+                }
             }
             is com.campusmesh.android.geohash.ChannelID.Location -> {
                 Log.d(TAG, "📍 Switching to geohash channel: ${channel.channel.geohash}")

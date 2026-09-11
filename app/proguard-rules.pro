@@ -42,3 +42,14 @@
 -dontwarn org.slf4j.impl.**
 -dontwarn java.lang.management.**
 
+
+# Strip verbose/debug/info logging from release builds.
+# ~900 Log.d/i/v calls ship in this app, several of which print message content, peer IDs and
+# identity fingerprints. logcat is readable over adb and by OEM log collectors, so for a
+# privacy-focused app these must not survive into release. Warnings and errors are kept.
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+    public static boolean isLoggable(java.lang.String, int);
+}

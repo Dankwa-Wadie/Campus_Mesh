@@ -1,6 +1,7 @@
 package com.campusmesh.android.wifiaware
 
 import android.net.ConnectivityManager
+import android.net.Network
 import android.util.Log
 import com.campusmesh.android.mesh.MeshConnectionTracker
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +27,22 @@ class WifiAwareConnectionTracker(
     val serverSockets = ConcurrentHashMap<String, ServerSocket>()
     val networkCallbacks = ConcurrentHashMap<String, ConnectivityManager.NetworkCallback>()
 
+    // The negotiated Wi-Fi Aware Network per connected peer, kept around after the initial TCP
+    // socket is created so a later feature (voice calling) can bind its own UDP DatagramSocket to
+    // the SAME data path via network.bindSocket(), without re-negotiating anything. Previously this
+    // Network object was only used transiently inside the NetworkCallback and then discarded.
+    val peerNetworks = ConcurrentHashMap<String, Network>()
+
+    fun setNetworkForPeer(peerId: String, network: Network) {
+        val canonicalId = resolveCanonicalPeerId(peerId)
+        peerNetworks[canonicalId] = network
+    }
+
+    fun getNetworkForPeer(peerId: String): Network? {
+        val canonicalId = resolveCanonicalPeerId(peerId)
+        return peerNetworks[canonicalId]
+    }
+
     override fun isConnected(id: String): Boolean {
         // We consider it connected if we have a client socket to them
         return getSocketForPeer(id) != null
@@ -48,6 +65,7 @@ class WifiAwareConnectionTracker(
 
         // Ensure any pending/active network request is explicitly released
         releaseNetworkRequest(canonicalId)
+        peerNetworks.remove(canonicalId)
         removePendingConnection(id)
         removePendingConnection(canonicalId)
     }
@@ -106,6 +124,7 @@ class WifiAwareConnectionTracker(
         peerSockets[resolvedPeerId] = socket
         serverSockets.remove(previousCanonical)?.let { serverSockets[resolvedPeerId] = it }
         networkCallbacks.remove(previousCanonical)?.let { networkCallbacks[resolvedPeerId] = it }
+        peerNetworks.remove(previousCanonical)?.let { peerNetworks[resolvedPeerId] = it }
         socketAliases[previousPeerId] = resolvedPeerId
         if (previousCanonical != previousPeerId) {
             socketAliases[previousCanonical] = resolvedPeerId

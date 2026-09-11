@@ -204,7 +204,7 @@ fun LocationChannelsSheet(
                     item(key = "mesh") {
                         ChannelRow(
                             title = meshTitleWithCount(viewModel),
-                            subtitle = stringResource(R.string.location_bluetooth_subtitle, bluetoothRangeString()),
+                            subtitle = "Ghana Region • Covers almost the whole of Ghana for national & regional conversations",
                             isSelected = selectedChannel is ChannelID.Mesh,
                             titleColor = standardBlue,
                             titleBold = meshCount(viewModel) > 0,
@@ -321,9 +321,16 @@ fun LocationChannelsSheet(
                             val highlight = participantCount > 0
                             val isBookmarked = bookmarksStore.isBookmarked(channel.geohash)
 
+                            val isOnCampus = com.campusmesh.android.geohash.MainCampusGeohash.isOnMainCampus(channel.geohash)
+                            val finalSubtitle = if (isOnCampus) {
+                                "🏫 ${com.campusmesh.android.geohash.MainCampusGeohash.DISPLAY_NAME} • $coverage"
+                            } else {
+                                subtitlePrefix + (namePart?.let { " • $it" } ?: "")
+                            }
+
                             ChannelRow(
                                 title = geohashTitleWithCount(channel, participantCount),
-                                subtitle = subtitlePrefix + (namePart?.let { " • $it" } ?: ""),
+                                subtitle = finalSubtitle,
                                 isSelected = isChannelSelected(channel, selectedChannel),
                                 titleColor = standardGreen,
                                 titleBold = highlight,
@@ -391,9 +398,16 @@ fun LocationChannelsSheet(
                             val participantCount = geohashParticipantCounts[gh] ?: 0
                             val title = geohashHashTitleWithCount(gh, participantCount)
 
+                            val isOnCampus = com.campusmesh.android.geohash.MainCampusGeohash.isOnMainCampus(gh)
+                            val finalSubtitle = if (isOnCampus) {
+                                "🏫 ${com.campusmesh.android.geohash.MainCampusGeohash.DISPLAY_NAME} • $coverage"
+                            } else {
+                                subtitle
+                            }
+
                             ChannelRow(
                                 title = title,
-                                subtitle = subtitle,
+                                subtitle = finalSubtitle,
                                 isSelected = isChannelSelected(channel, selectedChannel),
                                 titleColor = null,
                                 titleBold = participantCount > 0,
@@ -781,8 +795,7 @@ private fun meshTitleWithCount(viewModel: ChatViewModel): String {
     val meshCount = meshCount(viewModel)
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val peopleText = ctx.resources.getQuantityString(com.campusmesh.android.R.plurals.people_count, meshCount, meshCount)
-    val meshLabel = stringResource(com.campusmesh.android.R.string.mesh_label)
-    return "$meshLabel [$peopleText]"
+    return "Global Mesh (#ec) [$peopleText]"
 }
 
 private fun meshCount(viewModel: ChatViewModel): Int {

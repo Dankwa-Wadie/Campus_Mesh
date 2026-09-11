@@ -1,5 +1,13 @@
 package com.campusmesh.android.ui
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,7 +27,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -51,20 +62,7 @@ import com.campusmesh.android.geohash.MainCampusGeohash
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-/**
- * Chat list - the app's new home screen (docs/UI_REDESIGN_IMPLEMENTATION_PLAN.md Phase 2).
- * Pinned Main Campus + its 3 fixed sub-channels, then every other joined channel, private chat,
- * and the general Mesh timeline, merged into one recency-sorted list - matching
- * campus_mesh_design_mockups.html. Tapping any row opens the existing ChatScreen as a "pushed"
- * conversation detail screen (see ChatViewModel.openConversation/returnToChatList).
- *
- * Sourced entirely from existing ChatViewModel state - no backend changes, per the plan.
- *
- * Known gaps, deliberately left for their own phases rather than half-built here:
- * the search icon is a placeholder (no chat search exists yet anywhere in the app), and there's no
- * settings-gear or map-pin icon yet since Settings & Profile (Phase 5) and Map (Phase 6) don't
- * exist as screens yet yet. Both get added to this header once those phases land.
- */
+/** Campus conversations with local search and discovery shortcuts. */
 @Composable
 fun ChatListScreen(
     viewModel: ChatViewModel,
@@ -77,9 +75,14 @@ fun ChatListScreen(
     val unreadPrivateMessages by viewModel.unreadPrivateMessages.collectAsStateWithLifecycle()
     val peerNicknames by viewModel.peerNicknames.collectAsStateWithLifecycle()
     val connectedPeers by viewModel.connectedPeers.collectAsStateWithLifecycle()
+    val campusPresence by com.campusmesh.android.services.AppStateStore.campusPresence.collectAsStateWithLifecycle()
     val meshMessages by viewModel.messages.collectAsStateWithLifecycle()
 
+    var query by rememberSaveable { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf("All") }
+
     var showChannelsSheet by remember { mutableStateOf(false) }
+    var showNewDirectMessageSheet by remember { mutableStateOf(false) }
 
     val subChannelNames = remember { MainCampusGeohash.SUB_CHANNELS.map { it.first }.toSet() }
 
@@ -117,8 +120,8 @@ fun ChatListScreen(
     val meshEntry = ConversationEntry(
         key = "mesh",
         kind = EntryKind.MESH,
-        title = "Mesh",
-        preview = "${connectedPeers.size} people nearby",
+        title = "Nearby chat",
+        preview = meshMessages.lastOrNull()?.content ?: "Chat with nearby peers",
         timestampMillis = meshMessages.lastOrNull()?.timestamp?.time ?: 0L,
         unreadCount = null,
         hasUnread = false,
@@ -127,6 +130,16 @@ fun ChatListScreen(
 
     val recentEntries = (otherChannelEntries + privateChatEntries + listOf(meshEntry))
         .sortedByDescending { it.timestampMillis }
+
+    val visibleEntries = recentEntries.filter { entry ->
+        val matches = when (filter) {
+            "Unread" -> entry.hasUnread || (entry.unreadCount ?: 0) > 0
+            "Direct" -> entry.kind == EntryKind.PRIVATE
+            "Channels" -> entry.kind != EntryKind.PRIVATE
+            else -> true
+        }
+        matches && (query.isBlank() || entry.title.contains(query.trim(), ignoreCase = true))
+    }
 
     fun openEntry(entry: ConversationEntry) {
         when (entry.kind) {
@@ -144,10 +157,11 @@ fun ChatListScreen(
         viewModel.openConversation()
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         ChatListHeader(
             peopleNearby = connectedPeers.size,
             onNewChatClick = { showChannelsSheet = true },
+            onNewMessageClick = { showNewDirectMessageSheet = true },
             onMapClick = { viewModel.openMap() },
             onSettingsClick = { viewModel.openSettings() }
         )
@@ -156,20 +170,46 @@ fun ChatListScreen(
             contentPadding = PaddingValues(bottom = 12.dp)
         ) {
             item {
+                CampusPresenceCard(campusPresence, onRefresh = {
+                    com.campusmesh.android.geohash.LocationChannelManager.getInstance(viewModel.getApplication()).refreshChannels()
+                })
+            }
+            item {
+                OutlinedTextField(value = query, onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    label = { Text("Search conversations") }, singleLine = true,
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    shape = RoundedCornerShape(16.dp))
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("All", "Unread", "Direct", "Channels").forEach { label ->
+                        FilterChip(selected = filter == label, onClick = { filter = label }, label = { Text(label) })
+                    }
+                }
+            }
+            if (query.isBlank() && filter == "All") item {
                 PinnedCampusBlock(
                     unreadChannelMessages = unreadChannelMessages,
-                    onCampusClick = {
-                        viewModel.switchToChannel(null)
-                        viewModel.selectLocationChannel(ChannelID.Location(MainCampusGeohash.CHANNEL))
-                        viewModel.openConversation()
-                    },
                     onSubChannelClick = { name ->
                         viewModel.switchToChannel(name)
                         viewModel.openConversation()
                     }
                 )
             }
-            items(recentEntries, key = { it.kind.name + it.key }) { entry ->
+            item {
+                Text("Conversations", style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+            }
+            if (visibleEntries.isEmpty()) item {
+                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (filter == "Unread" && query.isBlank()) "You're all caught up" else "No conversations found",
+                        style = MaterialTheme.typography.titleMedium)
+                    Text(if (query.isNotBlank()) "Try another conversation name." else "Start a message or explore campus channels.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            items(visibleEntries, key = { it.kind.name + it.key }) { entry ->
                 ConversationRow(entry = entry, onClick = { openEntry(entry) })
             }
         }
@@ -180,6 +220,12 @@ fun ChatListScreen(
         onDismiss = { showChannelsSheet = false },
         viewModel = viewModel,
         onOpenMap = { viewModel.openMap() }
+    )
+
+    NewDirectMessageSheet(
+        isPresented = showNewDirectMessageSheet,
+        viewModel = viewModel,
+        onDismiss = { showNewDirectMessageSheet = false }
     )
 }
 
@@ -200,89 +246,60 @@ private data class ConversationEntry(
 private fun ChatListHeader(
     peopleNearby: Int,
     onNewChatClick: () -> Unit,
+    onNewMessageClick: () -> Unit,
     onMapClick: () -> Unit,
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.primary)
-            // The theme draws edge-to-edge (transparent status bar, see values/themes.xml), so
-            // without this the header row renders underneath the status bar/notch - too high up
-            // and with part of its touch targets obscured by system chrome. This pushes the actual
-            // content below the status bar, matching the pattern already used in ChatScreen.kt's
-            // header.
-            .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+        modifier = modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(WindowInsets.statusBars).padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Filled.SettingsInputAntenna,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(20.dp)
-                )
-                Text(
-                    text = "  Campus Mesh",
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    fontFamily = FontFamily.SansSerif,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
-                )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("CAMPUS MESH", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Text("Your campus, connected", style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
             }
-            Row {
+            IconButton(onClick = onSettingsClick) {
+                Icon(Icons.Filled.Settings, contentDescription = "Settings and profile")
+            }
+        }
+        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.SettingsInputAntenna, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                    Text(if (peopleNearby == 0) "No nearby peers connected" else "$peopleNearby nearby peer${if (peopleNearby == 1) "" else "s"} connected",
+                        style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("Nearby chat uses the local mesh", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer)
+                }
                 IconButton(onClick = onMapClick) {
-                    Icon(
-                        imageVector = Icons.Filled.Map,
-                        contentDescription = "Campus map",
-                        tint = MaterialTheme.colorScheme.onPrimary
-                    )
-                }
-                IconButton(onClick = { /* chat search - not built yet, tracked in plan */ }) {
-                    Icon(
-                        imageVector = Icons.Filled.Search,
-                        contentDescription = "Search",
-                        tint = MaterialTheme.colorScheme.onPrimary
-                    )
-                }
-                IconButton(onClick = onNewChatClick) {
-                    Icon(
-                        imageVector = Icons.Filled.Edit,
-                        contentDescription = "Channels and nearby",
-                        tint = MaterialTheme.colorScheme.onPrimary
-                    )
-                }
-                IconButton(onClick = onSettingsClick) {
-                    Icon(
-                        imageVector = Icons.Filled.Settings,
-                        contentDescription = "Settings and profile",
-                        tint = MaterialTheme.colorScheme.onPrimary
-                    )
+                    Icon(Icons.Filled.Map, contentDescription = "Open campus map", tint = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
             }
         }
-        Text(
-            text = "$peopleNearby people nearby",
-            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
-            fontFamily = FontFamily.SansSerif,
-            fontSize = 11.5.sp
-        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = onNewMessageClick, modifier = Modifier.weight(1f)) { Text("New message") }
+            OutlinedButton(onClick = onNewChatClick, modifier = Modifier.weight(1f)) { Text("Explore") }
+        }
     }
 }
 
 @Composable
 private fun PinnedCampusBlock(
     unreadChannelMessages: Map<String, Int>,
-    onCampusClick: () -> Unit,
     onSubChannelClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Main Campus is a folder, not a chat you open directly - tapping it just expands/collapses
+    // its two named channels below. (The underlying Main Campus geohash location channel is still
+    // reachable from the location channels sheet/pencil icon if it's ever needed again.)
+    var expanded by remember { mutableStateOf(true) }
+    val channelCount = MainCampusGeohash.SUB_CHANNELS.size
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -295,7 +312,7 @@ private fun PinnedCampusBlock(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onCampusClick() }
+                    .clickable { expanded = !expanded }
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -317,7 +334,7 @@ private fun PinnedCampusBlock(
                             text = "Main Campus",
                             fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.5.sp,
+                            fontSize = 16.sp,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Icon(
@@ -330,34 +347,42 @@ private fun PinnedCampusBlock(
                         )
                     }
                     Text(
-                        text = "Pinned · 3 channels",
+                        text = "Pinned · $channelCount channel${if (channelCount == 1) "" else "s"}",
                         fontFamily = FontFamily.SansSerif,
-                        fontSize = 12.sp,
+                        fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
             }
-            MainCampusGeohash.SUB_CHANNELS.forEach { (name, emoji) ->
-                val unread = unreadChannelMessages[name] ?: 0
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSubChannelClick(name) }
-                        .padding(start = 46.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = emoji, fontSize = 14.sp)
-                    Text(
-                        text = name,
+            if (expanded) {
+                MainCampusGeohash.SUB_CHANNELS.forEach { (name, emoji) ->
+                    val unread = unreadChannelMessages[name] ?: 0
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .padding(start = 8.dp),
-                        fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 12.5.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    UnreadBadge(kind = UnreadBadgeKind.CHANNEL, count = unread)
+                            .fillMaxWidth()
+                            .clickable { onSubChannelClick(name) }
+                            .heightIn(min = 48.dp).padding(start = 46.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = emoji, fontSize = 14.sp)
+                        Text(
+                            text = name,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 8.dp),
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        UnreadBadge(kind = UnreadBadgeKind.CHANNEL, count = unread)
+                    }
                 }
             }
         }
@@ -374,7 +399,7 @@ private fun ConversationRow(
         modifier = modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (entry.kind == EntryKind.MESH) {
@@ -404,7 +429,7 @@ private fun ConversationRow(
                 text = entry.title,
                 fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 13.5.sp,
+                fontSize = 16.sp,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -412,7 +437,7 @@ private fun ConversationRow(
             Text(
                 text = entry.preview,
                 fontFamily = FontFamily.SansSerif,
-                fontSize = 12.sp,
+                fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -445,4 +470,30 @@ private fun ConversationRow(
 private fun formatRelativeTime(timestampMillis: Long): String {
     val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
     return formatter.format(java.util.Date(timestampMillis))
+}
+
+@Composable
+private fun CampusPresenceCard(
+    presence: com.campusmesh.android.geohash.CampusPresence,
+    onRefresh: () -> Unit
+) {
+    val title = when (presence.status) {
+        com.campusmesh.android.geohash.CampusPresence.Status.INSIDE -> presence.campusName ?: "On campus"
+        com.campusmesh.android.geohash.CampusPresence.Status.GRACE -> "Campus location needs a recheck"
+        com.campusmesh.android.geohash.CampusPresence.Status.OUTSIDE -> "Outside campus"
+        com.campusmesh.android.geohash.CampusPresence.Status.UNKNOWN -> "Campus location unconfirmed"
+    }
+    val description = when (presence.status) {
+        com.campusmesh.android.geohash.CampusPresence.Status.INSIDE -> "Campus detected. Student verification is separate."
+        com.campusmesh.android.geohash.CampusPresence.Status.GRACE -> "Campus access is temporarily retained while location is uncertain."
+        else -> "School posting needs campus presence. Nearby direct messages remain available when a route exists."
+    }
+    Surface(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick = onRefresh) { Text("Recheck campus location") }
+        }
+    }
 }
