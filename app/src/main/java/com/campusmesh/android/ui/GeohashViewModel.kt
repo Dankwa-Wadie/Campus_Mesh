@@ -186,10 +186,22 @@ class GeohashViewModel(
         }
     }
 
-    fun sendGeohashMessage(content: String, channel: com.campusmesh.android.geohash.GeohashChannel, myPeerID: String, nickname: String?) {
+    /**
+     * @param sharedMessageId id used for the local echo and carried on the Nostr event, so the BLE
+     *   copy of the same message collapses with it instead of appearing twice. Callers that also
+     *   broadcast over mesh must pass the same value they used there.
+     */
+    fun sendGeohashMessage(
+        content: String,
+        channel: com.campusmesh.android.geohash.GeohashChannel,
+        myPeerID: String,
+        nickname: String?,
+        sharedMessageId: String? = null
+    ) {
         viewModelScope.launch {
             try {
-                val tempId = "temp_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000)}"
+                val tempId = sharedMessageId
+                    ?: "temp_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(1000)}"
                 val pow = PoWPreferenceManager.getCurrentSettings()
                 val localMsg = com.campusmesh.android.model.BitchatMessage(
                     id = tempId,
@@ -209,7 +221,9 @@ class GeohashViewModel(
                 try {
                     val identity = NostrIdentityBridge.deriveIdentity(forGeohash = channel.geohash, context = getApplication())
                     val teleported = state.isTeleported.value
-                    val event = NostrProtocol.createEphemeralGeohashEvent(content, channel.geohash, identity, nickname, teleported)
+                    val event = NostrProtocol.createEphemeralGeohashEvent(
+                        content, channel.geohash, identity, nickname, teleported, sharedMessageId
+                    )
                     val relayManager = NostrRelayManager.getInstance(getApplication())
                     relayManager.sendEventToGeohash(event, channel.geohash, includeDefaults = false, nRelays = 5)
                 } finally {

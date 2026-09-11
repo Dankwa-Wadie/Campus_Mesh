@@ -154,15 +154,24 @@ object NostrProtocol {
      * Create a geohash-scoped ephemeral public message (kind 20000)
      * Includes Proof of Work mining if enabled in settings
      */
+    /**
+     * @param sharedMessageId cross-transport id, carried so a receiver can collapse this event
+     *   with the same message arriving over BLE. See GeohashBridge.
+     */
     suspend fun createEphemeralGeohashEvent(
         content: String,
         geohash: String,
         senderIdentity: NostrIdentity,
         nickname: String? = null,
-        teleported: Boolean = false
+        teleported: Boolean = false,
+        sharedMessageId: String? = null
     ): NostrEvent = withContext(Dispatchers.Default) {
         val tags = mutableListOf<List<String>>()
         tags.add(listOf("g", geohash))
+
+        if (!sharedMessageId.isNullOrBlank()) {
+            tags.add(listOf(com.campusmesh.android.geohash.GeohashBridge.SHARED_ID_TAG, sharedMessageId))
+        }
         
         if (!nickname.isNullOrEmpty()) {
             tags.add(listOf("n", nickname))

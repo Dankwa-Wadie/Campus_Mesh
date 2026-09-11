@@ -22,19 +22,20 @@ class ConversationTransportTest {
 
     private val mainCampus = ChannelID.Location(MainCampusGeohash.CHANNEL)
 
+    /**
+     * Main Campus used to be Nostr-only, so messages sent offline silently queued until the
+     * internet returned. It now goes out over both transports.
+     */
     @Test
-    fun `main campus is an internet channel, not a mesh one`() {
+    fun `main campus sends over both transports and works offline`() {
         val transport = ConversationTransport.forSelection(
             selectedPrivatePeer = null,
             currentChannel = null,
             selectedLocationChannel = mainCampus
         )
 
-        assertEquals(ConversationTransport.INTERNET, transport)
-        assertFalse(
-            "Main Campus routes over Nostr; claiming it works offline is the original bug",
-            transport.worksOffline
-        )
+        assertEquals(ConversationTransport.DUAL, transport)
+        assertTrue("A campus channel must reach nearby devices with no internet", transport.worksOffline)
     }
 
     /**
@@ -101,12 +102,25 @@ class ConversationTransportTest {
     }
 
     @Test
-    fun `any geohash channel is internet-backed, not just main campus`() {
+    fun `every geohash channel is dual transport, not just main campus`() {
         val elsewhere = ChannelID.Location(GeohashChannel(GeohashChannelLevel.CITY, "ebzz"))
         assertEquals(
-            ConversationTransport.INTERNET,
+            ConversationTransport.DUAL,
             ConversationTransport.forSelection(null, null, elsewhere)
         )
+    }
+
+    /** Only a genuinely internet-only conversation may claim messages have to wait. */
+    @Test
+    fun `nothing reachable offline claims messages must wait`() {
+        ConversationTransport.entries
+            .filter { it.worksOffline }
+            .forEach { transport ->
+                assertFalse(
+                    "${'$'}transport works offline and must not say messages wait for a connection",
+                    transport.explain().contains("wait", ignoreCase = true)
+                )
+            }
     }
 
     @Test

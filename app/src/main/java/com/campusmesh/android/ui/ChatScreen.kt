@@ -729,8 +729,9 @@ private fun TransportNotice(
         selectedLocationChannel = selectedLocationChannel
     )
 
-    // Worth saying only when this conversation cannot reach anyone right now.
-    val meshUnavailable = transport == ConversationTransport.NEARBY_MESH && meshStatus.isActionable
+    // Worth saying only when this conversation cannot reach anyone right now. A DUAL channel with
+    // a healthy mesh needs no commentary: it reaches nearby devices and the internet both.
+    val meshUnavailable = transport.worksOffline && meshStatus.isActionable
     val show = transport == ConversationTransport.INTERNET || meshUnavailable
     if (!show) return
 

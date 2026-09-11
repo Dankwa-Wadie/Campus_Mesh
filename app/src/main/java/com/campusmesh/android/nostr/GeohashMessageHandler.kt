@@ -91,7 +91,10 @@ class GeohashMessageHandler(
                 val senderName = repo.displayNameForNostrPubkeyUI(event.pubkey)
                 val hasNonce = try { NostrProofOfWork.hasNonce(event) } catch (_: Exception) { false }
                 val msg = BitchatMessage(
-                    id = event.id,
+                    // Prefer the sender's cross-transport id so this collapses with the same
+                    // message arriving over BLE; falls back to the event id for senders that do
+                    // not set it.
+                    id = com.campusmesh.android.geohash.GeohashBridge.incomingMessageId(event.tags, event.id),
                     sender = senderName,
                     content = event.content,
                     timestamp = Date(event.createdAt * 1000L),

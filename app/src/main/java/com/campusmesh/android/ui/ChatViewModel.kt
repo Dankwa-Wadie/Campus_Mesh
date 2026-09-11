@@ -685,8 +685,36 @@ class ChatViewModel(
             // display-side priority already used by ChatScreen.kt's displayMessages.
             val selectedLocationChannel = state.selectedLocationChannel.value
             if (currentChannelValue == null && selectedLocationChannel is com.campusmesh.android.geohash.ChannelID.Location) {
-                // Send to geohash channel via Nostr ephemeral event
-                geohashViewModel.sendGeohashMessage(content, selectedLocationChannel.channel, mesh.myPeerID, state.getNicknameValue())
+                // Send over BOTH transports so a campus channel works with or without internet.
+                //
+                // This used to be Nostr-only, which is why messages sent offline silently queued
+                // and all arrived at once when connectivity returned: a geohash channel had no
+                // Bluetooth path at all. Both copies carry the same shared id, so a receiver on
+                // both transports collapses them into one message rather than showing duplicates.
+                val geohash = selectedLocationChannel.channel.geohash
+                val sharedId = com.campusmesh.android.geohash.GeohashBridge.newSharedMessageId()
+
+                geohashViewModel.sendGeohashMessage(
+                    content,
+                    selectedLocationChannel.channel,
+                    mesh.myPeerID,
+                    state.getNicknameValue(),
+                    sharedId
+                )
+
+                // Best effort: the mesh may be unavailable (Bluetooth off, no permission). A
+                // failure here must not stop the Nostr copy from going out.
+                try {
+                    // The channel travels as a content prefix, matching the convention
+                    // MessageHandler already parses; mesh.sendMessage ignores its channel
+                    // parameter. The shared id rides in the same prefix because a BLE message's
+                    // id is a hash of the packet, not something the sender can choose.
+                    val meshPayload = com.campusmesh.android.geohash.GeohashBridge
+                        .encodeChannelPrefix(geohash, sharedId) + content
+                    mesh.sendMessage(meshPayload, mentions)
+                } catch (e: Exception) {
+                    android.util.Log.w("ChatViewModel", "Mesh broadcast for geohash channel failed: ${e.message}")
+                }
             } else {
                 // Enforce role-based and geofenced posting guards for classic/IRC channels
                 if (isBlockedFromAnnouncements(currentChannelValue)) {

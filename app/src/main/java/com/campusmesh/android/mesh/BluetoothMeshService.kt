@@ -413,7 +413,18 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
                             if (peer.isNotEmpty()) com.campusmesh.android.services.AppStateStore.addPrivateMessage(peer, message)
                         }
                         message.channel != null -> {
-                            com.campusmesh.android.services.AppStateStore.addChannelMessage(message.channel!!, message)
+                            // A geohash channel arriving over BLE must be filed under the same key
+                            // the Nostr path uses ("geo:<geohash>"), or the two transports would
+                            // split one conversation into two separate views.
+                            val channel = message.channel!!
+                            val geohash = com.campusmesh.android.geohash.GeohashBridge
+                                .geohashFromChannelTag(channel)
+                            val storageKey = if (geohash != null) {
+                                com.campusmesh.android.geohash.GeohashBridge.storageKey(geohash)
+                            } else {
+                                channel
+                            }
+                            com.campusmesh.android.services.AppStateStore.addChannelMessage(storageKey, message)
                         }
                         else -> {
                             com.campusmesh.android.services.AppStateStore.addPublicMessage(message)

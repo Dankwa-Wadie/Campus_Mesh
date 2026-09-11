@@ -437,11 +437,17 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
             val rawContent = String(packet.payload, Charsets.UTF_8)
             var channelName: String? = null
             var cleanContent = rawContent
+            // Set when the sender supplied a cross-transport id, so this message can be collapsed
+            // with the same one arriving over Nostr instead of appearing twice.
+            var sharedMessageId: String? = null
 
             if (rawContent.startsWith("[#") || rawContent.startsWith("[📢#")) {
                 val closeBracket = rawContent.indexOf(']')
                 if (closeBracket > 0) {
-                    val ch = rawContent.substring(1, closeBracket)
+                    val body = rawContent.substring(1, closeBracket)
+                    val parsed = com.campusmesh.android.geohash.GeohashBridge.parseChannelPrefixBody(body)
+                    val ch = parsed.channelTag
+                    sharedMessageId = parsed.sharedMessageId
                     channelName = if (ch.startsWith("📢#")) ch.substring(1) else ch
                     cleanContent = rawContent.substring(closeBracket + 1).trim()
                 }
@@ -465,7 +471,10 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
             }
 
             val message = BitchatMessage(
-                id = PacketIdUtil.computeIdHex(packet).uppercase(),
+                // Prefer the sender's cross-transport id when present. A BLE id is a hash of the
+                // packet, so the same message over Nostr would otherwise carry a different id and
+                // show up twice for anyone receiving on both transports.
+                id = sharedMessageId ?: PacketIdUtil.computeIdHex(packet).uppercase(),
                 sender = delegate?.getPeerNickname(peerID) ?: "unknown",
                 content = cleanContent,
                 channel = channelName,

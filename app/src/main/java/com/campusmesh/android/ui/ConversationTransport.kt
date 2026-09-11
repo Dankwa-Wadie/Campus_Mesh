@@ -16,11 +16,18 @@ import com.campusmesh.android.geohash.ChannelID
  * mesh.
  */
 enum class ConversationTransport {
-    /** Nostr relays. Needs internet. No Bluetooth fallback. */
+    /** Nostr relays only. Needs internet, no Bluetooth fallback. */
     INTERNET,
 
     /** BLE mesh broadcast to nearby devices. Works with no connection. */
     NEARBY_MESH,
+
+    /**
+     * Both at once: broadcast over BLE *and* published to Nostr, deduplicated on arrival by a
+     * shared message id. Campus/geohash channels use this, so they reach nearby devices offline
+     * and everyone else when there is internet.
+     */
+    DUAL,
 
     /** Direct messages, routed by MessageRouter: mesh when a route exists, otherwise Nostr. */
     AUTOMATIC;
@@ -30,12 +37,14 @@ enum class ConversationTransport {
     fun label(): String = when (this) {
         INTERNET -> "Internet"
         NEARBY_MESH -> "Nearby"
+        DUAL -> "Nearby + Internet"
         AUTOMATIC -> "Auto"
     }
 
     fun explain(): String = when (this) {
         INTERNET -> "This channel sends over the internet. Messages wait until you're connected."
         NEARBY_MESH -> "This channel sends over Bluetooth to nearby devices. Works without internet."
+        DUAL -> "Sends to nearby devices over Bluetooth and to everyone else over the internet."
         AUTOMATIC -> "Sends over Bluetooth when the person is nearby, otherwise over the internet."
     }
 
@@ -52,7 +61,10 @@ enum class ConversationTransport {
         ): ConversationTransport = when {
             selectedPrivatePeer != null -> AUTOMATIC
             currentChannel != null -> NEARBY_MESH
-            selectedLocationChannel is ChannelID.Location -> INTERNET
+            // Geohash/campus channels now go out over both transports, so they keep working
+            // offline. They were Nostr-only, which is why messages sent without internet silently
+            // queued until connectivity returned.
+            selectedLocationChannel is ChannelID.Location -> DUAL
             else -> NEARBY_MESH
         }
     }
