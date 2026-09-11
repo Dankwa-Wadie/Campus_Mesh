@@ -12,7 +12,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
@@ -468,6 +471,10 @@ fun ChatInputSection(
                 )
                 HorizontalDivider(color = colorScheme.outline.copy(alpha = 0.2f))
             }
+            TransportNotice(
+                selectedPrivatePeer = selectedPrivatePeer,
+                currentChannel = currentChannel
+            )
             MessageInput(
                 value = messageText,
                 onValueChange = onMessageTextChange,
@@ -691,6 +698,68 @@ private fun ChatDialogs(
                 viewModel.hidePrivateChatSheet()
                 viewModel.endPrivateChat()
             }
+        )
+    }
+}
+
+
+/**
+ * A one-line note above the composer saying where this message is about to go.
+ *
+ * Deliberately placed at the composer rather than the header: the moment that matters is just
+ * before someone types, and the failure it prevents ("I sent messages offline and nothing
+ * happened") is only visible at send time.
+ *
+ * Stays quiet when there is nothing surprising to say — a nearby-mesh channel with a healthy mesh
+ * needs no commentary.
+ */
+@Composable
+private fun TransportNotice(
+    selectedPrivatePeer: String?,
+    currentChannel: String?
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val selectedLocationChannel by com.campusmesh.android.geohash.LocationChannelManager
+        .getInstance(LocalContext.current).selectedChannel.collectAsStateWithLifecycle()
+    val meshStatus by com.campusmesh.android.services.AppStateStore.meshStatus.collectAsStateWithLifecycle()
+
+    val transport = ConversationTransport.forSelection(
+        selectedPrivatePeer = selectedPrivatePeer,
+        currentChannel = currentChannel,
+        selectedLocationChannel = selectedLocationChannel
+    )
+
+    // Worth saying only when this conversation cannot reach anyone right now.
+    val meshUnavailable = transport == ConversationTransport.NEARBY_MESH && meshStatus.isActionable
+    val show = transport == ConversationTransport.INTERNET || meshUnavailable
+    if (!show) return
+
+    val text = if (meshUnavailable) meshStatus.describe() else transport.explain()
+    val tint = if (meshUnavailable) colorScheme.error else colorScheme.onSurface.copy(alpha = 0.7f)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(
+            imageVector = if (transport == ConversationTransport.INTERNET) {
+                Icons.Filled.Language
+            } else {
+                Icons.Filled.Bluetooth
+            },
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(14.dp)
+        )
+        Text(
+            text = text,
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+            color = tint
         )
     }
 }
