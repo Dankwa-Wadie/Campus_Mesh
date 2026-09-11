@@ -4,6 +4,7 @@ import android.util.Log
 import com.campusmesh.android.crypto.EncryptionService
 import com.campusmesh.android.protocol.BitchatPacket
 import com.campusmesh.android.protocol.MessageType
+import com.campusmesh.android.protocol.SpecialRecipients
 import com.campusmesh.android.model.RoutedPacket
 import com.campusmesh.android.util.toHexString
 import kotlinx.coroutines.*
@@ -23,8 +24,15 @@ class SecurityManager(private val encryptionService: EncryptionService, private 
         private const val CLEANUP_INTERVAL = com.campusmesh.android.util.AppConstants.Security.CLEANUP_INTERVAL_MS // 5 minutes
         private const val MAX_PROCESSED_MESSAGES = com.campusmesh.android.util.AppConstants.Security.MAX_PROCESSED_MESSAGES
         private const val MAX_PROCESSED_KEY_EXCHANGES = com.campusmesh.android.util.AppConstants.Security.MAX_PROCESSED_KEY_EXCHANGES
+
+        /** Public-channel flood control: at most this many broadcasts per sender per window. */
+        const val PUBLIC_BROADCAST_LIMIT = 3
+        const val PUBLIC_BROADCAST_WINDOW_MS = 10_000L
     }
     
+    // Public-broadcast send times per authenticated sender, for flood control.
+    private val publicBroadcastTimes = Collections.synchronizedMap(mutableMapOf<String, ArrayDeque<Long>>())
+
     // Security tracking
     private val processedMessages = Collections.synchronizedSet(mutableSetOf<String>())
     private val processedKeyExchanges = Collections.synchronizedSet(mutableSetOf<String>())
@@ -71,15 +79,34 @@ class SecurityManager(private val encryptionService: EncryptionService, private 
             Log.d(TAG, "Allowing duplicate ANNOUNCE from direct neighbor: $messageID")
         }
 
-        // Add to processed messages
-        processedMessages.add(messageID)
-        messageTimestamps[messageID] = currentTime
-        
-        // Enforce mandatory signature verification
+        // Enforce mandatory signature verification BEFORE the ID is recorded.
+        //
+        // Recording first made the dedup cache poisonable by anyone within radio range: capture a
+        // legitimate packet, flip one byte of its signature, and race it to nearby peers. The
+        // forgery is dropped here, but its messageID is already cached - so when the genuine
+        // packet arrives moments later it is discarded as a duplicate. That is silent, targeted
+        // message suppression requiring no key material at all. Only packets that actually
+        // authenticate are allowed to consume a dedup slot.
         if (!verifyPacketSignature(packet, peerID)) {
             Log.w(TAG, "Dropping packet from $peerID due to signature verification failure")
             return false
         }
+
+        // Flood control on public broadcasts, applied only to a sender we have just
+        // authenticated. Rate-limiting on an unverified sender ID would let an attacker silence
+        // someone else by spoofing their ID and burning their budget - the same ordering mistake
+        // that made the dedup cache poisonable.
+        //
+        // A throttled packet deliberately does NOT consume a dedup slot, so an honest resend once
+        // the window clears is still accepted.
+        if (isRateLimitedPublicBroadcast(packet, peerID, currentTime)) {
+            Log.w(TAG, "Dropping public broadcast from $peerID: exceeded $PUBLIC_BROADCAST_LIMIT per ${PUBLIC_BROADCAST_WINDOW_MS}ms")
+            return false
+        }
+
+        // Add to processed messages
+        processedMessages.add(messageID)
+        messageTimestamps[messageID] = currentTime
         
         Log.d(TAG, "Packet validation passed for $peerID, messageID: $messageID")
         return true
@@ -102,19 +129,6 @@ class SecurityManager(private val encryptionService: EncryptionService, private 
         // Skip our own handshake messages
         if (peerID == myPeerID) return false
 
-        // If we already have an established session but the peer is initiating a new handshake,
-        // drop the existing session so we can re-establish cleanly.
-        var forcedRehandshake = false
-        if (encryptionService.hasEstablishedSession(peerID)) {
-            Log.d(TAG, "Received new Noise handshake from $peerID with an existing session. Dropping old session to re-handshake.")
-            try {
-                encryptionService.removePeer(peerID)
-                forcedRehandshake = true
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to remove existing Noise session for $peerID: ${e.message}")
-            }
-        }
-        
         if (packet.payload.isEmpty()) {
             Log.w(TAG, "Noise handshake packet has empty payload")
             return false
@@ -123,7 +137,7 @@ class SecurityManager(private val encryptionService: EncryptionService, private 
         // Prevent duplicate handshake processing
         val exchangeKey = "$peerID-${packet.payload.sliceArray(0 until minOf(16, packet.payload.size)).contentHashCode()}"
         
-        if (!forcedRehandshake && processedKeyExchanges.contains(exchangeKey)) {
+        if (processedKeyExchanges.contains(exchangeKey)) {
             Log.d(TAG, "Already processed handshake: $exchangeKey")
             return false
         }
@@ -132,6 +146,7 @@ class SecurityManager(private val encryptionService: EncryptionService, private 
         
         try {
             // Process the Noise handshake through the updated EncryptionService
+            val previousHash = encryptionService.getHandshakeHash(peerID)
             val response = encryptionService.processHandshakeMessage(packet.payload, peerID)
             
             if (response != null) {
@@ -140,7 +155,8 @@ class SecurityManager(private val encryptionService: EncryptionService, private 
                 delegate?.sendHandshakeResponse(peerID, response)
             }
             // Check if session is now established (handshake complete)
-            if (encryptionService.hasEstablishedSession(peerID)) {
+            val currentHash = encryptionService.getHandshakeHash(peerID)
+            if (currentHash != null && !currentHash.contentEquals(previousHash)) {
                 Log.d(TAG, "✅ Noise handshake completed with $peerID")
                 delegate?.onKeyExchangeCompleted(peerID, packet.payload)
             }
@@ -153,24 +169,6 @@ class SecurityManager(private val encryptionService: EncryptionService, private 
         }
     }
 
-    /**
-     * Verify packet signature
-     */
-    fun verifySignature(packet: BitchatPacket, peerID: String): Boolean {
-        return packet.signature?.let { signature ->
-            try {
-                val isValid = encryptionService.verify(signature, packet.payload, peerID)
-                if (!isValid) {
-                    Log.w(TAG, "Invalid signature for packet from $peerID")
-                }
-                isValid
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to verify signature from $peerID: ${e.message}")
-                false
-            }
-        } ?: true // No signature means verification passes
-    }
-    
     /**
      * Sign packet payload
      */
@@ -215,20 +213,59 @@ class SecurityManager(private val encryptionService: EncryptionService, private 
     }
     
     /**
+     * Sliding-window flood check for public (broadcast) chat messages.
+     *
+     * Only MESSAGE packets addressed to the broadcast recipient count. Private messages, control
+     * traffic and handshakes are unaffected — throttling those would break session setup.
+     *
+     * Note: this limits the *originating sender*. Limiting the forwarding neighbour as well needs
+     * `RoutedPacket.relayAddress` plumbed through `PacketProcessorDelegate.validatePacketSecurity`,
+     * which currently passes only the sender. Tracked as follow-up.
+     */
+    private fun isRateLimitedPublicBroadcast(packet: BitchatPacket, peerID: String, now: Long): Boolean {
+        if (MessageType.fromValue(packet.type) != MessageType.MESSAGE) return false
+        val recipient = packet.recipientID ?: return false
+        if (!recipient.contentEquals(SpecialRecipients.BROADCAST)) return false
+
+        synchronized(publicBroadcastTimes) {
+            val times = publicBroadcastTimes.getOrPut(peerID) { ArrayDeque() }
+            while (times.isNotEmpty() && now - times.first() >= PUBLIC_BROADCAST_WINDOW_MS) {
+                times.removeFirst()
+            }
+            if (times.size >= PUBLIC_BROADCAST_LIMIT) return true
+            times.addLast(now)
+            return false
+        }
+    }
+
+    /**
      * Generate message ID for duplicate detection
      */
     private fun generateMessageID(packet: BitchatPacket, peerID: String): String {
         return when (MessageType.fromValue(packet.type)) {
             MessageType.FRAGMENT -> {
                 // For fragments, include the payload hash to distinguish different fragments
-                "${packet.timestamp}-$peerID-${packet.type}-${packet.payload.contentHashCode()}"
+                "${packet.timestamp}-$peerID-${packet.type}-${payloadDigest(packet.payload)}"
             }
             else -> {
                 // For other messages, use a truncated payload hash
-                val payloadHash = packet.payload.sliceArray(0 until minOf(64, packet.payload.size)).contentHashCode()
+                val payloadHash = payloadDigest(packet.payload.sliceArray(0 until minOf(64, packet.payload.size)))
                 "${packet.timestamp}-$peerID-$payloadHash"
             }
         }
+    }
+
+    /**
+     * Collision-resistant digest of a payload, for duplicate detection.
+     *
+     * This used to be [ByteArray.contentHashCode], i.e. a 32-bit `Arrays.hashCode`. Colliding
+     * against that is arithmetic, not cryptanalysis - so an attacker could craft a payload whose
+     * ID matched a message they wanted silenced and have the real one dropped as a duplicate.
+     * SHA-256 (truncated to 128 bits, which is ample for a 5-minute dedup window) removes that.
+     */
+    private fun payloadDigest(payload: ByteArray): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(payload)
+        return digest.sliceArray(0 until 16).joinToString("") { "%02x".format(it) }
     }
     
     /**
@@ -373,6 +410,16 @@ class SecurityManager(private val encryptionService: EncryptionService, private 
             removedCount += excess
         }
         
+        // Drop flood-control buckets for senders that have gone quiet, so the map does not grow
+        // unbounded with every peer ever seen.
+        synchronized(publicBroadcastTimes) {
+            val now = System.currentTimeMillis()
+            val idle = publicBroadcastTimes.filter { (_, times) ->
+                times.isEmpty() || now - times.last() >= PUBLIC_BROADCAST_WINDOW_MS
+            }.keys.toList()
+            idle.forEach { publicBroadcastTimes.remove(it) }
+        }
+
         // Limit the size of processed key exchanges set
         if (processedKeyExchanges.size > MAX_PROCESSED_KEY_EXCHANGES) {
             val excess = processedKeyExchanges.size - MAX_PROCESSED_KEY_EXCHANGES

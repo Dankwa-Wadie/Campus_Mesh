@@ -317,9 +317,6 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
             }
             
             // Cryptographic operations
-            override fun verifySignature(packet: BitchatPacket, peerID: String): Boolean {
-                return securityManager.verifySignature(packet, peerID)
-            }
             
             override fun encryptForPeer(data: ByteArray, recipientPeerID: String): ByteArray? {
                 return securityManager.encryptForPeer(data, recipientPeerID)
@@ -458,6 +455,14 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
 
             override fun onVerifyResponseReceived(peerID: String, payload: ByteArray, timestampMs: Long) {
                 delegate?.didReceiveVerifyResponse(peerID, payload, timestampMs)
+            }
+
+            override fun onCallSignalReceived(peerID: String, payload: ByteArray, timestampMs: Long) {
+                // BLE mesh doesn't carry live calls (no data-path bandwidth for real-time audio),
+                // but forward anyway so a REJECT/BUSY/END can still reach a peer only reachable
+                // over BLE relay right now - see MeshService.sendCallSignal's default no-op for
+                // why an OFFER would never originate from this transport in practice.
+                delegate?.didReceiveCallSignal(peerID, payload, timestampMs)
             }
         }
         

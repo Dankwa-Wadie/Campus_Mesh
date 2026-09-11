@@ -248,10 +248,6 @@ class MeshCore(
                 return SpecialRecipients.BROADCAST
             }
 
-            override fun verifySignature(packet: BitchatPacket, peerID: String): Boolean {
-                return securityManager.verifySignature(packet, peerID)
-            }
-
             override fun encryptForPeer(data: ByteArray, recipientPeerID: String): ByteArray? {
                 return securityManager.encryptForPeer(data, recipientPeerID)
             }
@@ -320,6 +316,10 @@ class MeshCore(
 
             override fun onVerifyResponseReceived(peerID: String, payload: ByteArray, timestampMs: Long) {
                 delegate?.didReceiveVerifyResponse(peerID, payload, timestampMs)
+            }
+
+            override fun onCallSignalReceived(peerID: String, payload: ByteArray, timestampMs: Long) {
+                delegate?.didReceiveCallSignal(peerID, payload, timestampMs)
             }
         }
 
@@ -562,6 +562,20 @@ class MeshCore(
         val payload = NoisePayload(
             type = NoisePayloadType.VERIFY_RESPONSE,
             data = tlv
+        )
+        sendNoisePayloadToPeer(payload, peerID)
+    }
+
+    /**
+     * Send a raw call-signaling payload (offer/ringing/accept/reject/busy/end) to a peer over
+     * the same Noise-encrypted private-message pipe already used for verification and read
+     * receipts - no new crypto or routing needed. [data] is whatever CallSignalingManager
+     * encoded (its own small binary format), opaque to the mesh layer.
+     */
+    fun sendCallSignal(peerID: String, data: ByteArray) {
+        val payload = NoisePayload(
+            type = NoisePayloadType.CALL_SIGNAL,
+            data = data
         )
         sendNoisePayloadToPeer(payload, peerID)
     }

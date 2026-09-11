@@ -167,6 +167,10 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                     Log.d(TAG, "🔐 Verify response received from $peerID (${noisePayload.data.size} bytes)")
                     delegate?.onVerifyResponseReceived(peerID, noisePayload.data, packet.timestamp.toLong())
                 }
+                com.campusmesh.android.model.NoisePayloadType.CALL_SIGNAL -> {
+                    Log.d(TAG, "📞 Call signal received from $peerID (${noisePayload.data.size} bytes)")
+                    delegate?.onCallSignalReceived(peerID, noisePayload.data, packet.timestamp.toLong())
+                }
             }
             
         } catch (e: Exception) {
@@ -479,10 +483,33 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
      */
     private suspend fun handlePrivateMessage(packet: BitchatPacket, peerID: String) {
         try {
-            // Verify signature if present
-            if (packet.signature != null && !delegate?.verifySignature(packet, peerID)!!) {
-                Log.w(TAG, "Invalid signature for private message from $peerID")
-                return
+            // Verify the Ed25519 signature if one is present.
+            //
+            // This used to route through SecurityManager.verifySignature, which could never fail:
+            // it delegated to EncryptionService.verify, which ignored both the signature and the
+            // signed bytes and simply reported whether a Noise session existed. Verify against the
+            // same canonical encoding the sender signed (toBinaryDataForSigning, see
+            // MeshCore.signPacketBeforeBroadcast) using the peer's announced signing key.
+            //
+            // When that key is not known yet the packet is allowed through with a warning rather
+            // than dropped: this path only ever sees payloads that already decrypted under an
+            // established Noise session, so transport authentication has already vouched for them,
+            // and failing closed here would silently break private messages from peers whose
+            // ANNOUNCE has not landed yet.
+            val signature = packet.signature
+            if (signature != null) {
+                val signingKey = delegate?.getPeerInfo(peerID)?.signingPublicKey
+                if (signingKey == null) {
+                    Log.w(TAG, "No signing key for $peerID yet; accepting private message on Noise authentication alone")
+                } else {
+                    val signedBytes = packet.toBinaryDataForSigning()
+                    val valid = signedBytes != null &&
+                        delegate?.verifyEd25519Signature(signature, signedBytes, signingKey) == true
+                    if (!valid) {
+                        Log.w(TAG, "Invalid signature for private message from $peerID")
+                        return
+                    }
+                }
             }
 
             // Try file packet first (voice, image, etc.) and log outcome for FILE_TRANSFER
@@ -663,7 +690,6 @@ interface MessageHandlerDelegate {
     fun getBroadcastRecipient(): ByteArray
     
     // Cryptographic operations
-    fun verifySignature(packet: BitchatPacket, peerID: String): Boolean
     fun encryptForPeer(data: ByteArray, recipientPeerID: String): ByteArray?
     fun decryptFromPeer(encryptedData: ByteArray, senderPeerID: String): ByteArray?
     fun verifyEd25519Signature(signature: ByteArray, data: ByteArray, publicKey: ByteArray): Boolean
@@ -685,4 +711,5 @@ interface MessageHandlerDelegate {
     fun onReadReceiptReceived(messageID: String, peerID: String)
     fun onVerifyChallengeReceived(peerID: String, payload: ByteArray, timestampMs: Long)
     fun onVerifyResponseReceived(peerID: String, payload: ByteArray, timestampMs: Long)
+    fun onCallSignalReceived(peerID: String, payload: ByteArray, timestampMs: Long)
 }
