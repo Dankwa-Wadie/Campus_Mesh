@@ -20,6 +20,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.platform.LocalContext
+import com.campusmesh.android.net.GatewayAuth
+import com.campusmesh.android.net.KtorGatewayManager
 import com.campusmesh.android.net.WifiHotspotManager
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -53,11 +56,20 @@ fun HotspotQrDialog(
     val hotspotActive = WifiHotspotManager.isHotspotActive
     // NsdManager registers a discoverable *service*, not a "campusmesh.local" host record, so
     // that hostname isn't guaranteed to resolve. The gateway IP always works once joined.
-    val gatewayUrl = WifiHotspotManager.hotspotGatewayIp?.let { "http://$it:8080" } ?: "http://campusmesh.local:8080"
+    // The gateway rejects clients that don't present this, so the invite URL has to carry it -
+    // it is the out-of-band step that stops anyone else on the Wi-Fi from reading mesh traffic.
+    val context = LocalContext.current
+    var pairingToken by remember { mutableStateOf(GatewayAuth.token(context)) }
+    val gatewayHost = WifiHotspotManager.hotspotGatewayIp?.let { "http://$it:8080" } ?: "http://campusmesh.local:8080"
+    val gatewayUrl = "$gatewayHost/?t=$pairingToken"
 
     // Combined QR payload: WPA join + mDNS link
     val qrPayload = buildQrPayload(ssid, password)
     val qrBitmap  = remember(qrPayload) { generateQrBitmap(qrPayload) }
+    // Second code for the paired gateway link. The Wi-Fi QR uses the WIFI: provisioning format,
+    // which carries credentials only - and the invite URL now ends in a 27-character token that
+    // nobody should have to retype, so it gets a code of its own.
+    val urlQrBitmap = remember(gatewayUrl) { generateQrBitmap(gatewayUrl) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -99,6 +111,16 @@ fun HotspotQrDialog(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
+                if (hotspotActive) {
+                    Text(
+                        text = "1. Scan to join the hotspot",
+                        color = Color(0xFF9E9EC8),
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
                 // QR Code
                 if (qrBitmap != null) {
                     Box(
@@ -132,6 +154,30 @@ fun HotspotQrDialog(
                                 textAlign = TextAlign.Center
                             )
                         }
+                    }
+                }
+
+                if (hotspotActive && urlQrBitmap != null) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "2. Then scan this to open the app",
+                        color = Color(0xFF9E9EC8),
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(150.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White)
+                            .padding(10.dp)
+                    ) {
+                        Image(
+                            bitmap = urlQrBitmap.asImageBitmap(),
+                            contentDescription = "Gateway URL QR Code",
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
                 }
 
@@ -173,7 +219,27 @@ fun HotspotQrDialog(
                     modifier = Modifier.padding(horizontal = 8.dp)
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Revoking matters: the invite URL is the whole access control for the gateway,
+                // and it gets shown on screen, screenshotted and forwarded. Without a way to
+                // rotate it a single leak is permanent.
+                TextButton(
+                    onClick = {
+                        pairingToken = GatewayAuth.regenerate(context)
+                        // Rotating the token only gates *new* connections; hang up on the old ones.
+                        KtorGatewayManager.disconnectAllClients()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "Reset invite link (disconnects paired devices)",
+                        color = Color(0xFF9E9EC8),
+                        fontSize = 12.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Close button
                 Button(

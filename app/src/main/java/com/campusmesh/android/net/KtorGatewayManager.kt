@@ -2,7 +2,6 @@ package com.campusmesh.android.net
 
 import android.content.Context
 import android.util.Log
-import com.campusmesh.android.crypto.EncryptionService
 import com.campusmesh.android.model.RoutedPacket
 import com.campusmesh.android.protocol.BitchatPacket
 import com.campusmesh.android.protocol.MessageType
@@ -14,6 +13,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.gson.gson
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
@@ -30,6 +30,7 @@ import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import io.ktor.websocket.close
+import io.ktor.websocket.CloseReason
 import java.io.File
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
@@ -53,7 +54,6 @@ object KtorGatewayManager : TransportBridgeService.TransportLayer {
     private val webSessions = ConcurrentHashMap<io.ktor.websocket.WebSocketSession, String>() // Session -> Peer ID
 
     private lateinit var appContext: Context
-    private val encryptionService by lazy { EncryptionService(appContext) }
 
     fun start(context: Context) {
         if (server != null) {
@@ -63,14 +63,43 @@ object KtorGatewayManager : TransportBridgeService.TransportLayer {
         appContext = context.applicationContext
         Log.i(TAG, "🚀 Starting Ktor Server on port $PORT...")
 
-        server = embeddedServer(Netty, port = PORT) {
-            configurePlugins()
-            configureRouting()
-        }.start(wait = false)
+        // Port 8080 may already be taken by another app; an unhandled BindException here would
+        // take down whatever called start().
+        try {
+            server = embeddedServer(Netty, port = PORT) {
+                configurePlugins()
+                configureRouting()
+            }.start(wait = false)
+        } catch (e: Exception) {
+            server = null
+            Log.e(TAG, "❌ Failed to start Ktor Server on port $PORT: ${e.message}", e)
+            return
+        }
 
         // Register as a transport layer in the mesh bridge
         TransportBridgeService.register("KTOR", this)
         Log.i(TAG, "✅ Ktor Server started and registered as 'KTOR' transport layer.")
+    }
+
+    /**
+     * Closes every live WebSocket session, without stopping the server.
+     *
+     * The pairing token is only checked when a socket is opened, so rotating it does nothing to
+     * clients that are already connected - they would keep receiving relayed mesh traffic on a
+     * credential the user just revoked. Revocation has to hang up on them too.
+     */
+    fun disconnectAllClients() {
+        val sessions = webSessions.keys.toList()
+        webSessions.clear()
+        if (sessions.isEmpty()) return
+        Log.i(TAG, "🔌 Disconnecting ${sessions.size} web client(s) after pairing reset")
+        scope.launch {
+            sessions.forEach { session ->
+                try {
+                    session.close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "pairing reset"))
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     fun stop() {
@@ -102,6 +131,19 @@ object KtorGatewayManager : TransportBridgeService.TransportLayer {
         }
     }
 
+    /**
+     * Rejects the call with 401 unless it carries a valid pairing token, returning whether it may
+     * proceed. Static PWA assets stay open - the client has to load the app before it can present
+     * a token - but anything carrying mesh or build data goes through here.
+     */
+    private suspend fun ApplicationCall.isPaired(): Boolean {
+        val token = request.queryParameters["t"]
+        if (GatewayAuth.isValid(appContext, token)) return true
+        Log.w(TAG, "🚫 Rejected unpaired request to ${request.local.uri}")
+        respond(HttpStatusCode.Unauthorized, "Pairing token required")
+        return false
+    }
+
     private fun Application.configureRouting() {
         routing {
             // Serve Main PWA landing
@@ -117,6 +159,12 @@ object KtorGatewayManager : TransportBridgeService.TransportLayer {
             // Serve static files (JS, CSS, SVGs)
             get("/{static-file}") {
                 val filename = call.parameters["static-file"] ?: ""
+                // Path params arrive percent-decoded, so "%2e%2e%2f" reaches us as "../".
+                // AssetManager confines reads to the APK either way, but don't hand it traversal.
+                if (filename.contains("..") || filename.contains('/') || filename.contains('\\')) {
+                    call.respond(HttpStatusCode.BadRequest)
+                    return@get
+                }
                 val content = readAssetString("web_pwa/$filename")
                 if (content != null) {
                     val contentType = when {
@@ -151,10 +199,11 @@ object KtorGatewayManager : TransportBridgeService.TransportLayer {
 
             // Serve OTA version information
             get("/api/ota/info") {
+                if (!call.isPaired()) return@get
                 val ota = OtaUpdateManager(appContext)
                 val info = mapOf(
-                    "versionCode" to OtaUpdateManager.CURRENT_VERSION_CODE,
-                    "versionHash" to OtaUpdateManager.CURRENT_VERSION_HASH,
+                    "versionCode" to ota.getCurrentVersionCode(),
+                    "versionHash" to ota.getCurrentVersionHash(),
                     "chunkSize" to OtaUpdateManager.CHUNK_SIZE,
                     "totalChunks" to ota.getChunkCount(),
                     "apkSize" to (ota.getLocalApkFile()?.length() ?: 0L)
@@ -164,6 +213,7 @@ object KtorGatewayManager : TransportBridgeService.TransportLayer {
 
             // Serve individual OTA chunks
             get("/api/ota/chunk/{index}") {
+                if (!call.isPaired()) return@get
                 val ota = OtaUpdateManager(appContext)
                 val indexStr = call.parameters["index"] ?: ""
                 val index = indexStr.toIntOrNull()
@@ -181,6 +231,15 @@ object KtorGatewayManager : TransportBridgeService.TransportLayer {
 
             // WebSockets endpoint for P2P bridging
             webSocket("/chat-ws") {
+                // Authenticate before this session can send or receive anything. Without it, any
+                // device on the same Wi-Fi could open this socket and passively read every mesh
+                // message relayed through this phone - see GatewayAuth.
+                if (!GatewayAuth.isValid(appContext, call.request.queryParameters["t"])) {
+                    Log.w(TAG, "🚫 Rejected unpaired WebSocket client (bad or missing token)")
+                    close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "pairing required"))
+                    return@webSocket
+                }
+
                 Log.d(TAG, "🔌 Web client connected via WebSocket.")
                 try {
                     for (frame in incoming) {
@@ -210,11 +269,13 @@ object KtorGatewayManager : TransportBridgeService.TransportLayer {
                     webSessions[session] = peerID
                     Log.d(TAG, "🤝 Received handshake from web client: $peerID")
                     
-                    // Reply with confirmation and current peer list
+                    // Reply with confirmation only. This endpoint is reachable by anything on the
+                    // same network, so it must not hand out this device's identity fingerprint or
+                    // the list of mesh peers around it - that is a deanonymisation primitive for
+                    // any unauthenticated LAN client.
                     val response = mapOf(
                         "type" to "handshake_ack",
-                        "myPeerID" to encryptionService.getIdentityFingerprint().take(16),
-                        "connectedPeers" to getConnectedMeshPeers()
+                        "peerCount" to getConnectedMeshPeers().size
                     )
                     scope.launch {
                         session.send(Frame.Text(gson.toJson(response)))
@@ -247,14 +308,12 @@ object KtorGatewayManager : TransportBridgeService.TransportLayer {
                             ttl = AppConstants.SYNC_TTL_HOPS
                         )
 
-                        // Sign the packet with gateway device keys to make it mesh-authentic if needed,
-                        // or broadcast it directly.
-                        val signedPacket = encryptionService.signData(packet.toBinaryDataForSigning()!!)?.let { sig ->
-                            packet.copy(signature = sig)
-                        } ?: packet
-
-                        // Inject packet into the local mesh networks
-                        TransportBridgeService.broadcast("KTOR", RoutedPacket(signedPacket))
+                        // Deliberately NOT signed with this device's Ed25519 identity key.
+                        // Anything on the local network can open this socket, so signing its
+                        // content here would let a stranger emit packets that the mesh attributes
+                        // to this device's identity. Web-bridged traffic goes out unsigned and is
+                        // treated as untrusted by receiving peers.
+                        TransportBridgeService.broadcast("KTOR", RoutedPacket(packet))
                     }
                 }
             }

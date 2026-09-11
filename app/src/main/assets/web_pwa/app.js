@@ -158,12 +158,38 @@ function updateGhostModeButton() {
     label.textContent = isGhostMode ? 'Ghost Mode: On' : 'Go Ghost';
 }
 
+// --- Pairing token ---
+// The gateway is reachable by anything on the same Wi-Fi, so the bridge requires the token the
+// host handed out with the invite URL (?t=...). Cached so reloads and the 3s reconnect below keep
+// working after the query string is gone from the address bar.
+function pairingToken() {
+    const fromUrl = new URLSearchParams(window.location.search).get('t');
+    if (fromUrl) {
+        try { localStorage.setItem('cm_pairing_token', fromUrl); } catch (e) { /* private mode */ }
+        return fromUrl;
+    }
+    try {
+        return localStorage.getItem('cm_pairing_token') || '';
+    } catch (e) {
+        return '';
+    }
+}
+
 // --- WebSocket Connection ---
 function connectWebSocket() {
     const host = window.location.host || 'localhost:8080';
-    const wsUrl = `ws://${host}/chat-ws`;
+    const token = pairingToken();
 
-    console.log(`Connecting to Ktor WebSocket: ${wsUrl}`);
+    if (!token) {
+        console.warn("No pairing token - open the invite link the host gave you.");
+        connectionBadge.textContent = "Not paired";
+        connectionBadge.className = "badge badge-disconnected";
+        return;
+    }
+
+    const wsUrl = `ws://${host}/chat-ws?t=${encodeURIComponent(token)}`;
+
+    console.log("Connecting to Ktor WebSocket...");
     socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
@@ -191,11 +217,22 @@ function connectWebSocket() {
         }
     };
 
-    socket.onclose = () => {
+    socket.onclose = (event) => {
         console.log("WebSocket disconnected.");
+
+        // 1008 = VIOLATED_POLICY, which the gateway uses for a bad token. Retrying cannot fix
+        // that, so drop the stale token and stop hammering the socket.
+        if (event.code === 1008) {
+            console.warn("Pairing rejected - ask the host for a fresh invite link.");
+            try { localStorage.removeItem('cm_pairing_token'); } catch (e) { /* private mode */ }
+            connectionBadge.textContent = "Not paired";
+            connectionBadge.className = "badge badge-disconnected";
+            return;
+        }
+
         connectionBadge.textContent = "Offline";
         connectionBadge.className = "badge badge-disconnected";
-        
+
         // Reconnect after 3 seconds
         setTimeout(connectWebSocket, 3000);
     };
@@ -216,14 +253,13 @@ function handleIncomingPacket(data) {
         // Check if message is an emergency alert
         if (content.startsWith('/alert ') || channel === '#gctu-announcements') {
             const alertText = content.replace('/alert ', '');
-            showEmergencyAlert(sender, alertText);
+            // showEmergencyAlert() intentionally not called: it is a full-screen interrupt driven by
+            // unauthenticated peer input, so any peer could disrupt every connected client at will.
+            // The announcement still appears in the message list, marked unverified.
             appendAlertMessage(sender, alertText, timestamp);
         } else if (channel === currentChannel) {
             appendChatMessage(sender, content, timestamp);
         }
-        
-        // Update mock location mapping on map for peer demo
-        updatePeerLocationMock(sender);
     }
 }
 
@@ -263,17 +299,16 @@ function appendChatMessage(sender, content, date, isOutgoing = false) {
     nameSpan.className = 'sender';
     nameSpan.textContent = sender;
 
-    const roleBadge = document.createElement('span');
-    const isLecturer = sender.includes('Lecturer') || sender === 'You' && myRole === 'Lecturer';
-    roleBadge.className = `role-badge ${isLecturer ? 'role-lecturer' : 'role-student'}`;
-    roleBadge.textContent = isLecturer ? 'Lecturer' : 'Student';
-
     const timeSpan = document.createElement('span');
     timeSpan.className = 'time';
     timeSpan.textContent = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     metaDiv.appendChild(nameSpan);
-    metaDiv.appendChild(roleBadge);
+    // No role badge here. This used to derive a role from the sender's display name
+    // (sender.includes('Lecturer')) and label everyone else "Student" - so any peer could award
+    // themselves a lecturer badge by renaming, and every other peer was shown as verified
+    // membership they had never proved. Role badges return when they come from a verified
+    // credential, not from a string.
     metaDiv.appendChild(timeSpan);
 
     const bodyDiv = document.createElement('div');
@@ -298,9 +333,12 @@ function appendAlertMessage(sender, content, date) {
     nameSpan.className = 'sender';
     nameSpan.textContent = '📢 ' + sender;
 
+    // Not 'OFFICIAL'. Nothing here has been verified: this renders whatever arrived over the
+    // mesh, and no credential check exists yet. Labelling it official let any peer impersonate
+    // a campus announcement. Restore an authority badge only when a verified credential backs it.
     const roleBadge = document.createElement('span');
-    roleBadge.className = 'role-badge role-lecturer';
-    roleBadge.textContent = 'OFFICIAL';
+    roleBadge.className = 'role-badge role-unverified';
+    roleBadge.textContent = 'UNVERIFIED';
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'time';
@@ -456,7 +494,7 @@ function renderOwnMarker() {
 
 /**
  * Toggles Ghost Mode: hides/shows this client's own marker and persists the choice. Real
- * peer-location mesh broadcast doesn't exist yet (see updatePeerLocationMock below), so today
+ * peer-location mesh broadcast doesn't exist yet (see updatePeerMapPresence below), so today
  * this only controls our own marker and the flag sent in the handshake — it's the plumbing
  * ready for when peer positions are actually transmitted over the mesh.
  */
@@ -470,35 +508,16 @@ function setGhostMode(enabled) {
     }
 }
 
-// Mock peer location around campus for presentation wow factor
-function updatePeerLocationMock(peerID) {
-    if (!map) return;
-
-    if (peerMarkers[peerID]) {
-        return; // Already plotted
-    }
-
-    const isLecturer = peerID.includes('Lecturer') || peerID.includes('peer-01');
-    const html = isLecturer ? 'L' : 'S';
-    
-    const pin = L.divIcon({
-        className: `custom-pin ${isLecturer ? 'lecturer' : ''}`,
-        html: html,
-        iconSize: [24, 24]
-    });
-
-    // Randomize offset slightly around GCTU campus
-    const latOffset = (Math.random() - 0.5) * 0.003;
-    const lonOffset = (Math.random() - 0.5) * 0.003;
-    const peerLocation = [CAMPUSES.main.lat + latOffset, CAMPUSES.main.lon + lonOffset];
-
-    const marker = L.marker(peerLocation, { icon: pin })
-        .addTo(map)
-        .bindPopup(`Peer: ${peerID}<br>Role: ${isLecturer ? 'Lecturer' : 'Student'}`);
-
-    peerMarkers[peerID] = marker;
-    
-    // Update peer map count label
-    const peerCount = Object.keys(peerMarkers).length;
-    mapPeerCount.textContent = `${peerCount} peer${peerCount > 1 ? 's' : ''} active on map`;
+// Peer positions are deliberately NOT rendered.
+//
+// This previously plotted every peer at a random offset around campus and inferred their role from
+// a substring of their peer ID ("Lecturer" => lecturer pin). Both were fabricated: a mesh
+// connection establishes neither someone's position nor their student status, and showing invented
+// ones made unverified peers look located and unverified roles look authorized.
+//
+// Positions may only be drawn from a position the peer explicitly shared, and role badges only
+// from a verified credential. Until peer-location broadcast and credential verification exist,
+// peers appear in the participant list without a map marker.
+function updatePeerMapPresence(peerID) {
+    // Intentionally a no-op: no position evidence exists for remote peers yet.
 }
