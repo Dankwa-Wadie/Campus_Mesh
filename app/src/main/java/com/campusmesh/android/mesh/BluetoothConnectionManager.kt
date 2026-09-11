@@ -188,22 +188,65 @@ class BluetoothConnectionManager(
     /**
      * Start all Bluetooth services with power optimization
      */
+    /**
+     * Whether the system location toggle is on.
+     *
+     * Required for BLE scan results below Android 12, and on 12+ unless BLUETOOTH_SCAN is declared
+     * with `neverForLocation`. minSdk is 26, so many target devices need this regardless of the
+     * manifest flag.
+     */
+    private fun isLocationServicesEnabled(): Boolean {
+        return try {
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
+                ?: return true   // cannot tell; do not block startup on a missing service
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                lm.isLocationEnabled
+            } else {
+                @Suppress("DEPRECATION")
+                lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
+                    lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not read location services state: ${e.message}")
+            true
+        }
+    }
+
+    private fun report(status: MeshStartupStatus) {
+        try {
+            com.campusmesh.android.services.AppStateStore.setMeshStatus(status)
+        } catch (_: Exception) { }
+    }
+
     fun startServices(): Boolean {
         Log.i(TAG, "Starting power-optimized Bluetooth services...")
 
         if (!isBleTransportEnabled()) {
             Log.i(TAG, "BLE transport disabled by debug settings; not starting Bluetooth services")
+            report(MeshStartupStatus.DisabledByUser)
             disableTransport()
             return false
         }
         
         if (!permissionManager.hasBluetoothPermissions()) {
             Log.e(TAG, "Missing Bluetooth permissions")
+            report(MeshStartupStatus.MissingPermissions)
             return false
         }
         
         if (bluetoothAdapter?.isEnabled != true) {
             Log.e(TAG, "Bluetooth is not enabled")
+            report(MeshStartupStatus.BluetoothOff)
+            return false
+        }
+
+        // Location *services*, not merely the permission. Android will happily start a BLE scan
+        // with location services off and then never deliver a single result - no error, no
+        // callback, no indication. Mesh discovery just silently finds nobody while internet chat
+        // keeps working, which is exactly the failure that is hardest to diagnose in the field.
+        if (!isLocationServicesEnabled()) {
+            Log.e(TAG, "Location services are OFF - BLE scanning will return no results. Refusing to start silently.")
+            report(MeshStartupStatus.LocationServicesOff)
             return false
         }
         

@@ -4,6 +4,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.FilterChip
@@ -15,6 +17,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,6 +42,7 @@ import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -76,6 +81,8 @@ fun ChatListScreen(
     val peerNicknames by viewModel.peerNicknames.collectAsStateWithLifecycle()
     val connectedPeers by viewModel.connectedPeers.collectAsStateWithLifecycle()
     val campusPresence by com.campusmesh.android.services.AppStateStore.campusPresence.collectAsStateWithLifecycle()
+
+    val meshStatus by com.campusmesh.android.services.AppStateStore.meshStatus.collectAsStateWithLifecycle()
     val meshMessages by viewModel.messages.collectAsStateWithLifecycle()
 
     var query by rememberSaveable { mutableStateOf("") }
@@ -173,6 +180,12 @@ fun ChatListScreen(
                 CampusPresenceCard(campusPresence, onRefresh = {
                     com.campusmesh.android.geohash.LocationChannelManager.getInstance(viewModel.getApplication()).refreshChannels()
                 })
+            }
+            item {
+                // Without this, a dead mesh and an empty room look identical: both show zero
+                // peers. Internet-backed channels keep working either way, so the app appears
+                // healthy while nearby chat is entirely down.
+                MeshStatusBanner(meshStatus)
             }
             item {
                 OutlinedTextField(value = query, onValueChange = { query = it },
@@ -494,6 +507,64 @@ private fun CampusPresenceCard(
             Text(title, style = MaterialTheme.typography.titleMedium)
             Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick = onRefresh) { Text("Recheck campus location") }
+        }
+    }
+}
+
+
+/**
+ * Explains why nearby (Bluetooth) chat is unavailable, and offers the one action that fixes it.
+ *
+ * Shown only when the mesh is not running for a reason the user can act on. A healthy mesh with no
+ * one in range renders nothing — "no peers nearby" is normal and does not need a warning.
+ */
+@Composable
+private fun MeshStatusBanner(status: com.campusmesh.android.mesh.MeshStartupStatus) {
+    if (!status.isActionable) return
+
+    val context = LocalContext.current
+    val colorScheme = MaterialTheme.colorScheme
+
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = colorScheme.errorContainer)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Nearby chat is off",
+                    color = colorScheme.onErrorContainer,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = status.describe(),
+                    color = colorScheme.onErrorContainer.copy(alpha = 0.85f),
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
+                )
+            }
+            val intent = when (status) {
+                is com.campusmesh.android.mesh.MeshStartupStatus.LocationServicesOff ->
+                    android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                is com.campusmesh.android.mesh.MeshStartupStatus.BluetoothOff ->
+                    android.content.Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)
+                else -> android.content.Intent(
+                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.fromParts("package", context.packageName, null)
+                )
+            }
+            OutlinedButton(onClick = {
+                runCatching { context.startActivity(intent) }
+            }) {
+                Text("Fix", fontSize = 13.sp)
+            }
         }
     }
 }

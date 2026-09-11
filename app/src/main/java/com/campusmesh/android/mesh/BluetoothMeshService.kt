@@ -672,6 +672,7 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
         
         if (connectionManager.startServices()) {
             isActive = true
+            com.campusmesh.android.services.AppStateStore.setMeshStatus(MeshStartupStatus.Running)
             TransportBridgeService.register("BLE", this)
             
             // Start periodic announcements for peer discovery and connectivity
@@ -681,7 +682,14 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
             com.campusmesh.android.service.MeshServiceHolder.startSharedGossip("BLE")
             Log.d(TAG, "GossipSyncManager started")
         } else {
+            // connectionManager has already published the specific reason; only fall back to a
+            // generic failure if it did not, so the UI never shows "unknown" for a known cause.
             Log.e(TAG, "Failed to start Bluetooth services")
+            if (com.campusmesh.android.services.AppStateStore.meshStatus.value == MeshStartupStatus.Idle) {
+                com.campusmesh.android.services.AppStateStore.setMeshStatus(
+                    MeshStartupStatus.Failed("GATT server or client did not start")
+                )
+            }
         }
     }
 

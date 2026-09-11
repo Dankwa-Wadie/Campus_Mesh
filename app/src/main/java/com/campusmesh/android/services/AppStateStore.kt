@@ -29,6 +29,17 @@ object AppStateStore {
 
     // True if the user has enabled Ghost Mode: this device's position is never broadcast to
     // peers and never rendered as a marker on anyone's map, including our own gateway session.
+    // Why BLE mesh is or is not running, so the UI can explain a dead mesh instead of just
+    // showing zero peers - which is indistinguishable from "nobody is nearby".
+    private val _meshStatus = MutableStateFlow<com.campusmesh.android.mesh.MeshStartupStatus>(
+        com.campusmesh.android.mesh.MeshStartupStatus.Idle
+    )
+    val meshStatus: StateFlow<com.campusmesh.android.mesh.MeshStartupStatus> = _meshStatus.asStateFlow()
+
+    fun setMeshStatus(status: com.campusmesh.android.mesh.MeshStartupStatus) {
+        _meshStatus.value = status
+    }
+
     private val _isGhostMode = MutableStateFlow(false)
     val isGhostMode: StateFlow<Boolean> = _isGhostMode.asStateFlow()
 
