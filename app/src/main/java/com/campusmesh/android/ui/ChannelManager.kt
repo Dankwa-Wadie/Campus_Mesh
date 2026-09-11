@@ -101,6 +101,9 @@ class ChannelManager(
         dataManager.removeChannelMembers(channel)
         channelKeys.remove(channel)
         channelPasswords.remove(channel)
+        // The key commitment is deliberately kept: it holds no key material (it is a hash), and
+        // retaining it is what lets verifyChannelPassword actually reject a wrong password when
+        // this user rejoins later. Only clearAllChannels (panic wipe) discards it.
         dataManager.removeChannelCreator(channel)
         
         saveChannelData()
@@ -118,9 +121,44 @@ class ChannelManager(
     
     // MARK: - Channel Password and Encryption
     
+    /**
+     * Checks [password] against the key commitment recorded for [channel] and, on success,
+     * installs the derived key so channel traffic can actually be decrypted.
+     *
+     * Previously this was stubbed to `return true`, so any password admitted anyone - and because
+     * the join path never derived a key either, the "member" then sat in a channel whose messages
+     * they could never read.
+     *
+     * A commitment is SHA-256 of the derived key, so it can be compared without keeping the
+     * password or the key itself around for comparison. We only hold commitments for channels
+     * whose password this device has set or previously verified; for a channel created by someone
+     * else there is nothing local to check against, so the key is derived and installed and
+     * decryption becomes the real gate - a wrong password yields a key that simply never decrypts
+     * anything. That is weaker than a commitment check but it is honest, and it is strictly better
+     * than admitting everyone with no key at all.
+     */
     private fun verifyChannelPassword(channel: String, password: String): Boolean {
-        // TODO: REMOVE THIS - FOR TESTING ONLY
+        val derivedKey = deriveChannelKey(password, channel)
+        val commitment = channelKeyCommitments[channel]
+
+        if (commitment != null && commitment != keyCommitment(derivedKey)) {
+            return false
+        }
+
+        channelKeys[channel] = derivedKey
+        channelPasswords[channel] = password
+        if (commitment == null) {
+            // First successful use on this device; record it so later attempts are checked.
+            channelKeyCommitments[channel] = keyCommitment(derivedKey)
+        }
         return true
+    }
+
+    /** SHA-256 of the derived key - lets us check a password without storing key material. */
+    private fun keyCommitment(key: SecretKeySpec): String {
+        return MessageDigest.getInstance("SHA-256")
+            .digest(key.encoded)
+            .joinToString("") { "%02x".format(it) }
     }
     
     private fun deriveChannelKey(password: String, channelName: String): SecretKeySpec {
@@ -161,17 +199,54 @@ class ChannelManager(
         }
     }
     
+    /**
+     * Encrypts [content] for [channel] and hands the ciphertext to [onEncryptedPayload].
+     *
+     * Exactly one of [onEncryptedPayload] / [onFallback] is always invoked - returning without
+     * calling either strands the message in the local list while never putting it on the wire,
+     * which looks to the sender exactly like a successful send.
+     */
     fun sendEncryptedChannelMessage(
-        content: String, 
-        mentions: List<String>, 
-        channel: String, 
-        senderNickname: String?, 
+        content: String,
+        mentions: List<String>,
+        channel: String,
+        senderNickname: String?,
         myPeerID: String,
         onEncryptedPayload: (ByteArray) -> Unit,
         onFallback: () -> Unit
     ) {
-        // TODO: REIMPLEMENT – REMOVED FOR NOW
-        return
+        val key = channelKeys[channel]
+        if (key == null) {
+            onFallback()
+            return
+        }
+
+        val encrypted = encryptChannelContent(content, key)
+        if (encrypted == null) {
+            onFallback()
+            return
+        }
+
+        onEncryptedPayload(encrypted)
+    }
+
+    /**
+     * AES-256-GCM with a fresh 12-byte IV prefixed to the ciphertext - the exact wire format
+     * [decryptChannelMessage] expects, so the two stay symmetric.
+     */
+    private fun encryptChannelContent(content: String, key: SecretKeySpec): ByteArray? {
+        return try {
+            val iv = ByteArray(12)
+            java.security.SecureRandom().nextBytes(iv)
+
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, iv))
+            val ciphertext = cipher.doFinal(content.toByteArray(Charsets.UTF_8))
+
+            iv + ciphertext
+        } catch (e: Exception) {
+            null
+        }
     }
     
     // MARK: - Channel Management
@@ -236,7 +311,10 @@ class ChannelManager(
 
         channelPasswords[channel] = password
 
-        channelKeys[channel] = deriveChannelKey(password, channel)
+        val derivedKey = deriveChannelKey(password, channel)
+        channelKeys[channel] = derivedKey
+        // Record the commitment so verifyChannelPassword has something to check against.
+        channelKeyCommitments[channel] = keyCommitment(derivedKey)
 
         state.setPasswordProtectedChannels(
             state.getPasswordProtectedChannelsValue().toMutableSet().apply { add(channel) }
