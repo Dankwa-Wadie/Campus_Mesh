@@ -18,12 +18,26 @@ enum class BitchatMessageType : Parcelable {
 /**
  * Delivery status for messages - exact same as iOS version
  */
+/**
+ * Progress of an outgoing message.
+ *
+ * The distinction that matters on a mesh: [SentToMesh] means the packet was handed to at least one
+ * neighbour, which is NOT the same as arrival. Only [Delivered] asserts that the recipient
+ * acknowledged it, and it may only be set from a real delivery ACK
+ * (`MeshDelegate.didReceiveDeliveryAck`) or when constructing a message we ourselves received.
+ * Marking a message delivered because the local send finished tells the user something untrue.
+ */
 sealed class DeliveryStatus : Parcelable {
+    /** In the local outbox; no radio or peer has taken it yet. */
+    @Parcelize
+    object Queued : DeliveryStatus()
+
     @Parcelize
     object Sending : DeliveryStatus()
 
+    /** Handed to >= 1 neighbour. Says nothing about whether the recipient received it. */
     @Parcelize
-    object Sent : DeliveryStatus()
+    object SentToMesh : DeliveryStatus()
 
     @Parcelize
     data class Delivered(val to: String, val at: Date) : DeliveryStatus()
@@ -39,8 +53,9 @@ sealed class DeliveryStatus : Parcelable {
 
     fun getDisplayText(): String {
         return when (this) {
+            is Queued -> "Queued"
             is Sending -> "Sending..."
-            is Sent -> "Sent"
+            is SentToMesh -> "Sent to mesh"
             is Delivered -> "Delivered to ${this.to}"
             is Read -> "Read by ${this.by}"
             is Failed -> "Failed: ${this.reason}"

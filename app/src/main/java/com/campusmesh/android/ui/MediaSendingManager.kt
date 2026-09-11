@@ -403,9 +403,13 @@ class MediaSendingManager(
         val msgId = synchronized(transferMessageMap) { transferMessageMap[evt.transferId] }
         if (msgId != null) {
             if (evt.completed) {
+                // The local transfer finished - that means the bytes left this device, NOT that the
+                // recipient received them. "Delivered" is reserved for a real acknowledgement from
+                // the recipient (didReceiveDeliveryAck -> MeshDelegateHandler), so this reports
+                // SentToMesh instead. Claiming delivery here told the user something untrue.
                 messageManager.updateMessageDeliveryStatus(
                     msgId,
-                    com.campusmesh.android.model.DeliveryStatus.Delivered(to = "mesh", at = java.util.Date())
+                    com.campusmesh.android.model.DeliveryStatus.SentToMesh
                 )
                 synchronized(transferMessageMap) {
                     val msgIdRemoved = transferMessageMap.remove(evt.transferId)

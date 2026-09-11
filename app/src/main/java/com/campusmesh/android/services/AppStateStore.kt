@@ -17,6 +17,16 @@ object AppStateStore {
     private val _currentAppMode = MutableStateFlow(AppMode.GENERAL_MESH)
     val currentAppMode: StateFlow<AppMode> = _currentAppMode.asStateFlow()
 
+    private val _campusPresence = MutableStateFlow(com.campusmesh.android.geohash.CampusPresence())
+    val campusPresence = _campusPresence.asStateFlow()
+
+    fun setCampusPresence(presence: com.campusmesh.android.geohash.CampusPresence) {
+        synchronized(this) {
+            _campusPresence.value = presence
+            _currentAppMode.value = presence.mode
+        }
+    }
+
     // True if the user has enabled Ghost Mode: this device's position is never broadcast to
     // peers and never rendered as a marker on anyone's map, including our own gateway session.
     private val _isGhostMode = MutableStateFlow(false)
@@ -131,8 +141,9 @@ object AppStateStore {
 
     private fun statusPriority(status: DeliveryStatus?): Int = when (status) {
         null -> 0
+        is DeliveryStatus.Queued -> 0
         is DeliveryStatus.Sending -> 1
-        is DeliveryStatus.Sent -> 2
+        is DeliveryStatus.SentToMesh -> 2
         is DeliveryStatus.PartiallyDelivered -> 3
         is DeliveryStatus.Delivered -> 4
         is DeliveryStatus.Read -> 5

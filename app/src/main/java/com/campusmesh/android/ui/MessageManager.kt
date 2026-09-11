@@ -216,8 +216,9 @@ class MessageManager(private val state: ChatState) {
     
     private fun statusPriority(status: DeliveryStatus?): Int = when (status) {
         null -> 0
+        is DeliveryStatus.Queued -> 0
         is DeliveryStatus.Sending -> 1
-        is DeliveryStatus.Sent -> 2
+        is DeliveryStatus.SentToMesh -> 2
         is DeliveryStatus.PartiallyDelivered -> 3
         is DeliveryStatus.Delivered -> 4
         is DeliveryStatus.Read -> 5

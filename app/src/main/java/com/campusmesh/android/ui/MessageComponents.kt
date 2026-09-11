@@ -499,6 +499,7 @@ fun DeliveryStatusIcon(status: DeliveryStatus) {
     val colorScheme = MaterialTheme.colorScheme
     
     when (status) {
+        is DeliveryStatus.Queued,
         is DeliveryStatus.Sending -> {
             Text(
                 text = stringResource(R.string.status_sending),
@@ -506,7 +507,7 @@ fun DeliveryStatusIcon(status: DeliveryStatus) {
                 color = colorScheme.primary.copy(alpha = 0.6f)
             )
         }
-        is DeliveryStatus.Sent -> {
+        is DeliveryStatus.SentToMesh -> {
             // Use a subtle hollow marker for Sent; single check is reserved for Delivered (iOS parity)
             Text(
                 text = stringResource(R.string.status_pending),
