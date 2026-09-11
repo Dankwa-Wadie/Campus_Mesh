@@ -13,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextLayoutResult
@@ -497,54 +499,66 @@ fun MessageItem(
 @Composable
 fun DeliveryStatusIcon(status: DeliveryStatus) {
     val colorScheme = MaterialTheme.colorScheme
-    
-    when (status) {
-        is DeliveryStatus.Queued,
-        is DeliveryStatus.Sending -> {
-            Text(
-                text = stringResource(R.string.status_sending),
-                fontSize = 10.sp,
-                color = colorScheme.primary.copy(alpha = 0.6f)
-            )
-        }
-        is DeliveryStatus.SentToMesh -> {
-            // Use a subtle hollow marker for Sent; single check is reserved for Delivered (iOS parity)
-            Text(
-                text = stringResource(R.string.status_pending),
-                fontSize = 10.sp,
-                color = colorScheme.primary.copy(alpha = 0.6f)
-            )
-        }
-        is DeliveryStatus.Delivered -> {
-            // Single check for Delivered (matches iOS expectations)
-            Text(
-                text = stringResource(R.string.status_sent),
-                fontSize = 10.sp,
-                color = colorScheme.primary.copy(alpha = 0.8f)
-            )
-        }
-        is DeliveryStatus.Read -> {
-            Text(
-                text = stringResource(R.string.status_delivered),
-                fontSize = 10.sp,
-                color = Color(0xFF007AFF), // Blue
-                fontWeight = FontWeight.Bold
-            )
-        }
-        is DeliveryStatus.Failed -> {
-            Text(
-                text = stringResource(R.string.status_failed),
-                fontSize = 10.sp,
-                color = Color.Red.copy(alpha = 0.8f)
-            )
-        }
-        is DeliveryStatus.PartiallyDelivered -> {
-            // Show a single subdued check without numeric label
-            Text(
-                text = stringResource(R.string.status_sent),
-                fontSize = 10.sp,
-                color = colorScheme.primary.copy(alpha = 0.6f)
-            )
-        }
+
+    // Every state gets its own glyph. Previously Queued, Sending and SentToMesh all rendered as a
+    // hollow circle, so "waiting for a route" and "handed to a neighbour" looked identical -- and
+    // PartiallyDelivered rendered as the same tick as Delivered, claiming full delivery when only
+    // some peers had been reached. On a mesh those are different facts and the UI must not blur
+    // them.
+    val (glyph, description, color, bold) = when (status) {
+        is DeliveryStatus.Queued -> Quad(
+            stringResource(R.string.status_queued),
+            stringResource(R.string.status_cd_queued),
+            colorScheme.onSurface.copy(alpha = 0.45f),
+            false
+        )
+        is DeliveryStatus.Sending -> Quad(
+            stringResource(R.string.status_sending),
+            stringResource(R.string.status_cd_sending),
+            colorScheme.primary.copy(alpha = 0.6f),
+            false
+        )
+        is DeliveryStatus.SentToMesh -> Quad(
+            stringResource(R.string.status_pending),
+            stringResource(R.string.status_cd_sent_to_mesh),
+            colorScheme.primary.copy(alpha = 0.6f),
+            false
+        )
+        is DeliveryStatus.Delivered -> Quad(
+            stringResource(R.string.status_sent),
+            stringResource(R.string.status_cd_delivered, status.to),
+            colorScheme.primary.copy(alpha = 0.85f),
+            false
+        )
+        is DeliveryStatus.Read -> Quad(
+            stringResource(R.string.status_delivered),
+            stringResource(R.string.status_cd_read, status.by),
+            Color(0xFF007AFF),
+            true
+        )
+        is DeliveryStatus.PartiallyDelivered -> Quad(
+            stringResource(R.string.status_partial, status.reached, status.total),
+            stringResource(R.string.status_cd_partial, status.reached, status.total),
+            colorScheme.primary.copy(alpha = 0.6f),
+            false
+        )
+        is DeliveryStatus.Failed -> Quad(
+            stringResource(R.string.status_failed),
+            stringResource(R.string.status_cd_failed, status.reason),
+            Color.Red.copy(alpha = 0.8f),
+            false
+        )
     }
+
+    Text(
+        text = glyph,
+        fontSize = 10.sp,
+        color = color,
+        fontWeight = if (bold) FontWeight.Bold else null,
+        // The glyphs are meaningless to a screen reader on their own.
+        modifier = Modifier.semantics { contentDescription = description }
+    )
 }
+
+/** Local 4-tuple; Kotlin only ships Pair and Triple. */
+private data class Quad<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)

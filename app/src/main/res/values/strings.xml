@@ -393,11 +393,28 @@
   <string name="media_type_file">File</string>
 
   <!-- Message status icons -->
+  <!-- Delivery state glyphs. Each state must be visually distinct: on a mesh, "handed to a
+       neighbour" and "the recipient got it" are genuinely different claims, and showing the same
+       mark for both tells the user something the app does not know. -->
+  <string name="status_queued">◌</string>
   <string name="status_sending">○</string>
-  <string name="status_pending">○</string>
+  <string name="status_pending">◑</string>
   <string name="status_sent">✓</string>
   <string name="status_delivered">✓✓</string>
   <string name="status_failed">⚠</string>
+  <!-- Partial mesh delivery, e.g. "✓ 3/7" - reached some peers, not all. -->
+  <string name="status_partial">✓ %1$d/%2$d</string>
+
+  <!-- Spoken labels for the glyphs above; the glyphs alone are meaningless to a screen reader. -->
+  <string name="status_cd_queued">Queued, waiting for a route</string>
+  <string name="status_cd_sending">Sending</string>
+  <string name="status_cd_sent_to_mesh">Sent to nearby devices, not yet confirmed</string>
+  <string name="status_cd_delivered">Delivered to %1$s</string>
+  <string name="status_cd_read">Read by %1$s</string>
+  <!-- Phrased so no number sits directly before a noun; "of 1 nearby devices" would be wrong,
+       and a plurals resource across ~30 locales is not worth it for a count label. -->
+  <string name="status_cd_partial">Nearby devices reached: %1$d of %2$d</string>
+  <string name="status_cd_failed">Not delivered: %1$s</string>
   <string name="status_read">✓</string>
 
   <!-- Notification text helpers -->
