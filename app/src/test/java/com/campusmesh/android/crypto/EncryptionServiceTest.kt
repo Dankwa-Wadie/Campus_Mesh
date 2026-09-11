@@ -3,6 +3,7 @@ package com.campusmesh.android.crypto
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.campusmesh.android.noise.NoiseEncryptionService
+import com.campusmesh.testing.FakeAndroidKeyStore
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Before
@@ -19,6 +20,8 @@ class EncryptionServiceTest {
 
     @Before
     fun setup() {
+        FakeAndroidKeyStore.install()
+        FakeAndroidKeyStore.clear()
         context = ApplicationProvider.getApplicationContext()
         encryptionService = EncryptionService(context)
     }

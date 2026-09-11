@@ -22,6 +22,38 @@ android {
         }
     }
 
+    // Release signing. Supply the four values either as Gradle properties (e.g. in
+    // ~/.gradle/gradle.properties, which is outside the repo) or as environment variables in CI:
+    //
+    //   CM_KEYSTORE_FILE / CM_KEYSTORE_PASSWORD / CM_KEY_ALIAS / CM_KEY_PASSWORD
+    //
+    // When they're absent the release build stays unsigned, so local `assembleRelease` still works
+    // - but note that an unsigned APK cannot be installed by Android, and OTA signature
+    // verification has nothing to compare against. Releases must be built with these set.
+    val keystorePath = (findProperty("CM_KEYSTORE_FILE") as String?) ?: System.getenv("CM_KEYSTORE_FILE")
+    val keystorePassword = (findProperty("CM_KEYSTORE_PASSWORD") as String?) ?: System.getenv("CM_KEYSTORE_PASSWORD")
+    val keystoreAlias = (findProperty("CM_KEY_ALIAS") as String?) ?: System.getenv("CM_KEY_ALIAS")
+    val keystoreKeyPassword = (findProperty("CM_KEY_PASSWORD") as String?) ?: System.getenv("CM_KEY_PASSWORD")
+    val hasSigningConfig = !keystorePath.isNullOrBlank() &&
+        !keystorePassword.isNullOrBlank() &&
+        !keystoreAlias.isNullOrBlank() &&
+        !keystoreKeyPassword.isNullOrBlank() &&
+        file(keystorePath).exists()
+
+    signingConfigs {
+        if (hasSigningConfig) {
+            create("release") {
+                storeFile = file(keystorePath!!)
+                storePassword = keystorePassword
+                keyAlias = keystoreAlias
+                keyPassword = keystoreKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
+    }
+
     dependenciesInfo {
         // Disables dependency metadata when building APKs.
         includeInApk = false
@@ -39,6 +71,15 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            if (hasSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                logger.warn(
+                    "Campus Mesh: no release signing config found - assembleRelease will produce " +
+                    "an UNSIGNED APK that Android cannot install. Set CM_KEYSTORE_FILE, " +
+                    "CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS and CM_KEY_PASSWORD to sign it."
+                )
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -81,10 +122,39 @@ android {
             excludes += "META-INF/io.netty.versions.properties"
         }
     }
+    testOptions {
+        // Robolectric needs the merged resource table to resolve R.string/R.plurals lookups made
+        // by code under test. Without this, any test touching a resource fails with
+        // Resources$NotFoundException - which is what had NotificationManagerTest and
+        // CommandProcessorTest disabled (the @Ignore comments blamed Mockito; that was a
+        // misdiagnosis - mockito-inline was already on the test classpath).
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
     lint {
+        // The baseline freezes today's known issues so they can't grow; abortOnError means a
+        // NEW one fails the build instead of scrolling past in CI, which is what the previous
+        // abortOnError=false/checkReleaseBuilds=false pair prevented. (The old baseline had
+        // drifted badly - 42 of its 54 entries no longer existed.)
         baseline = file("lint-baseline.xml")
-        abortOnError = false
-        checkReleaseBuilds = false
+        abortOnError = true
+        checkReleaseBuilds = true
+
+        // Translation completeness is real work, but it is a content task tracked separately -
+        // it should not sit in the same queue as crash and security defects, and 361 of them
+        // would bury everything else in the baseline.
+        disable += setOf("MissingTranslation", "ImpliedQuantity", "MissingQuantity")
+
+        // Classes of defect that must never be merely baselined: each one is a crash or a
+        // security hole on some device (a missing runtime-permission check, an API used below
+        // minSdk, a manifest class that doesn't exist, an unprotected broadcast receiver).
+        error += setOf(
+            "MissingPermission",
+            "NewApi",
+            "MissingClass",
+            "UnspecifiedRegisterReceiverFlag"
+        )
     }
 }
 

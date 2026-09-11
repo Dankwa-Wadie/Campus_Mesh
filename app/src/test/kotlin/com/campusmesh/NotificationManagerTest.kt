@@ -6,7 +6,6 @@ import androidx.test.core.app.ApplicationProvider
 import com.campusmesh.android.ui.NotificationManager
 import com.campusmesh.android.util.NotificationIntervalManager
 import org.junit.Before
-import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito
@@ -36,7 +35,6 @@ class NotificationManagerTest {
     )
   }
 
-  @Ignore // Temporarily disabled due to Mockito final class issues
   @Test
   fun `when there are no active peers, do not send active peer notification`() {
     notificationManager.setAppBackgroundState(true)
@@ -44,7 +42,6 @@ class NotificationManagerTest {
     verify(notificationManagerCompat, never()).notify(any(), any())
   }
 
-  @Ignore // Temporarily disabled due to Mockito final class issues
   @Test
   fun `when app is in foreground, do not send active peer notification`() {
     notificationManager.setAppBackgroundState(false)
@@ -52,7 +49,6 @@ class NotificationManagerTest {
     verify(notificationManagerCompat, never()).notify(any(), any())
   }
 
-  @Ignore // Temporarily disabled due to Mockito final class issues
   @Test
   fun `when there is an active peer, send notification`() {
     notificationManager.setAppBackgroundState(true)
@@ -60,7 +56,6 @@ class NotificationManagerTest {
     verify(notificationManagerCompat, times(1)).notify(any(), any())
   }
 
-  @Ignore // Temporarily disabled due to Mockito final class issues
   @Test
   fun `when there is an active peer but less than 5 minutes have passed since last notification, do not send notification`() {
     notificationManager.setAppBackgroundState(true)
@@ -69,7 +64,6 @@ class NotificationManagerTest {
     verify(notificationManagerCompat, times(1)).notify(any(), any())
   }
 
-  @Ignore // Temporarily disabled due to Mockito final class issues
   @Test
   fun `when there is an active peer and more than 5 minutes have passed since last notification, send notification`() {
     notificationManager.setAppBackgroundState(true)
@@ -79,7 +73,6 @@ class NotificationManagerTest {
     verify(notificationManagerCompat, times(2)).notify(any(), any())
   }
 
-  @Ignore // Temporarily disabled due to Mockito final class issues
   @Test
   fun `when there is a recently seen peer but no new active peers, no notification is sent`() {
     notificationManager.setAppBackgroundState(true)
@@ -88,7 +81,6 @@ class NotificationManagerTest {
     verify(notificationManagerCompat, times(0)).notify(any(), any())
   }
 
-  @Ignore // Temporarily disabled due to Mockito final class issues
   @Test
   fun `when an active peer is a recently seen peer, do not send notification`() {
     notificationManager.setAppBackgroundState(true)
@@ -97,7 +89,6 @@ class NotificationManagerTest {
     verify(notificationManagerCompat, times(0)).notify(any(), any())
   }
 
-  @Ignore // Temporarily disabled due to Mockito final class issues
   @Test
   fun `when an active peer is a new peer, send notification`() {
     notificationManager.setAppBackgroundState(true)
@@ -106,7 +97,6 @@ class NotificationManagerTest {
     verify(notificationManagerCompat, times(1)).notify(any(), any())
   }
 
-  @Ignore // Temporarily disabled due to Mockito final class issues
   @Test
   fun `when an active peer is a new peer and there are already multiple recently seen peers, send notification`() {
     notificationManager.setAppBackgroundState(true)
