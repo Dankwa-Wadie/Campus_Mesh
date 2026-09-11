@@ -333,6 +333,13 @@ body {
     color: var(--danger);
 }
 
+/* Deliberately muted: an unverified announcement must not read as an authoritative one.
+   .role-student and .role-lecturer are retained for when verified credentials exist. */
+.role-unverified {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary);
+}
+
 .message-meta .time {
     color: var(--text-secondary);
 }

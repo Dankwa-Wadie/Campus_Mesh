@@ -20,11 +20,15 @@ object RoleAttestationManager {
     // Master GCTU Admin Public Key (32 bytes Ed25519) - hardcoded fallback for verification
     // In a real deployment, this would be loaded from a secure genesis configuration.
     private const val ADMIN_PUBLIC_KEY_BASE64 = "MCowBQYDK2VwAyEAfv/aEwX9sVzXwNqS13lK8J5t13hY2xS87lIq0bK4A0k=" 
-    private val ADMIN_PUBLIC_KEY_BYTES by lazy {
+    // null rather than a zero-filled array on decode failure: an all-zero Ed25519 key is a
+    // small-order point, and silently substituting one turns "we can't read the admin key" into
+    // "verify against a garbage key", which is much harder to diagnose than a hard failure.
+    private val ADMIN_PUBLIC_KEY_BYTES: ByteArray? by lazy {
         try {
             Base64.decode(ADMIN_PUBLIC_KEY_BASE64, Base64.DEFAULT)
         } catch (e: Exception) {
-            ByteArray(32) // Fallback empty
+            Log.e(TAG, "Admin public key is not valid base64 - all announcements will be rejected")
+            null
         }
     }
 
@@ -196,7 +200,8 @@ object RoleAttestationManager {
     /**
      * Utility method to verify Ed25519 signature
      */
-    private fun verifyEd25519(publicKeyBytes: ByteArray, data: ByteArray, signatureBytes: ByteArray): Boolean {
+    private fun verifyEd25519(publicKeyBytes: ByteArray?, data: ByteArray, signatureBytes: ByteArray): Boolean {
+        if (publicKeyBytes == null || publicKeyBytes.isEmpty()) return false
         return try {
             // Check key format
             val cleanPubKey = if (publicKeyBytes.size > 32) {
@@ -214,24 +219,4 @@ object RoleAttestationManager {
         }
     }
 
-    /**
-     * Helper to create a signed mock announcement payload (useful for presentation demos)
-     */
-    fun createMockAnnouncementPayload(content: String, lecturerPrivateKeyBase64: String, lecturerPublicKeyBase64: String): String {
-        val mockCert = RoleCertificate(
-            subjectPublicKey = lecturerPublicKeyBase64,
-            role = "Lecturer",
-            name = "Dr. Kofi Mensah",
-            signature = "aGFja2F0aG9uX2FkbWluX3NpZ25hdHVyZV9tb2NrX3NhZmFyaV9wcmVzZW50YXRpb24=" // Pre-signed stub
-        )
-        
-        val announcement = SignedAnnouncement(
-            content = content,
-            timestamp = System.currentTimeMillis(),
-            certificate = mockCert,
-            messageSignature = "bW9ja19sZWN0dXJlcl9zaWduYXR1cmV=" // Mock signature
-        )
-        
-        return gson.toJson(announcement)
-    }
 }
