@@ -37,15 +37,27 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Location foreground service type required for BLE scanning in background -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- Microphone foreground service type, required (API 34+) to keep a voice call's audio
+         capture alive with the screen off/app backgrounded -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    
-    <!-- Microphone for voice notes -->
+
+    <!-- Microphone for voice notes and voice calls -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Reliable speakerphone/audio-routing toggling during a call on some OEMs -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- Camera for QR verification -->
     <uses-permission android:name="android.permission.CAMERA" />
+    
+    <!-- Permission to request package installation for updates -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Storage permissions for file sharing -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <!-- Pre-Q only: saving an image to the public Downloads folder needs this below API 29.
+         From Q onward MediaStore.Downloads handles it under scoped storage and this is neither
+         requested nor granted. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
@@ -120,24 +132,31 @@
             tools:ignore="DataExtractionRules">
         </service>
 
-        <!-- Listen for in-app broadcast when POST_NOTIFICATIONS is granted -->
-        <receiver
-            android:name=".service.NotificationPermissionChangedReceiver"
-            android:enabled="true"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.campusmesh.android.action.NOTIFICATION_PERMISSION_GRANTED" />
-            </intent-filter>
-        </receiver>
+        <!-- Dedicated foreground service for the lifetime of an active voice call: keeps mic
+             capture alive with the screen off/app backgrounded, independent of the mesh service's
+             own promotion logic. -->
+        <service
+            android:name=".call.CallForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="microphone"
+            tools:ignore="DataExtractionRules">
+        </service>
 
-        <!-- Auto-start mesh service after boot if enabled -->
+        <!-- Auto-start mesh service after boot if enabled.
+             exported must be true: BOOT_COMPLETED is broadcast by the system UID, and an
+             exported="false" manifest receiver is unreachable from another UID, so this never
+             fired at all.
+             LOCKED_BOOT_COMPLETED is deliberately NOT handled: it is delivered before the user
+             unlocks, when credential-encrypted storage is still locked, and this receiver reads
+             preferences and starts a service that needs the identity keys stored there. Handling
+             it would require directBootAware="true" plus moving that state to device-encrypted
+             storage. BOOT_COMPLETED (post-unlock) is the correct trigger for this app. -->
         <receiver
             android:name=".service.BootCompletedReceiver"
             android:enabled="true"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
     </application>

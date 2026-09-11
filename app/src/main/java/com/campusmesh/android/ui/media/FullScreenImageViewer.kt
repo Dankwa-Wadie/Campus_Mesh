@@ -146,22 +146,17 @@ private fun saveToDownloads(context: android.content.Context, path: String) {
             name.endsWith(".webp", true) -> "image/webp"
             else -> "image/jpeg"
         }
-        val values = ContentValues().apply {
-            put(MediaStore.Downloads.DISPLAY_NAME, name)
-            put(MediaStore.Downloads.MIME_TYPE, mime)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Downloads.IS_PENDING, 1)
-            }
+        // MediaStore.Downloads arrived in API 29, but minSdk is 26 - touching
+        // Downloads.EXTERNAL_CONTENT_URI on 26-28 throws at runtime, so saving an image crashed
+        // on those devices instead of saving anything. Pre-Q writes go to the public Downloads
+        // directory and are handed to the media scanner so they show up in the Files app.
+        val saved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            saveViaMediaStore(context, path, name, mime)
+        } else {
+            saveToPublicDownloadsLegacy(context, path, name, mime)
         }
-        val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-        if (uri != null) {
-            context.contentResolver.openOutputStream(uri)?.use { out ->
-                File(path).inputStream().use { it.copyTo(out) }
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val v2 = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
-                context.contentResolver.update(uri, v2, null, null)
-            }
+
+        if (saved) {
             // Show toast message indicating the image has been saved
             Toast.makeText(context, context.getString(R.string.toast_image_saved), Toast.LENGTH_SHORT).show()
         }
@@ -169,4 +164,68 @@ private fun saveToDownloads(context: android.content.Context, path: String) {
         // Optionally handle failure case (e.g., show error toast)
         Toast.makeText(context, context.getString(R.string.toast_failed_to_save_image), Toast.LENGTH_SHORT).show()
     }
+}
+
+@androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
+private fun saveViaMediaStore(
+    context: android.content.Context,
+    path: String,
+    name: String,
+    mime: String
+): Boolean {
+    val values = ContentValues().apply {
+        put(MediaStore.Downloads.DISPLAY_NAME, name)
+        put(MediaStore.Downloads.MIME_TYPE, mime)
+        put(MediaStore.Downloads.IS_PENDING, 1)
+    }
+    val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+        ?: return false
+
+    context.contentResolver.openOutputStream(uri)?.use { out ->
+        File(path).inputStream().use { it.copyTo(out) }
+    }
+    val done = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
+    context.contentResolver.update(uri, done, null, null)
+    return true
+}
+
+/**
+ * Pre-Q fallback. Scoped storage does not apply below API 29, so the file goes straight into the
+ * public Downloads directory; the media scanner call is what makes it visible to other apps.
+ *
+ * Requires WRITE_EXTERNAL_STORAGE, which is only granted on these older API levels - if the user
+ * declined it the write throws and the caller reports the failure.
+ */
+private fun saveToPublicDownloadsLegacy(
+    context: android.content.Context,
+    path: String,
+    name: String,
+    mime: String
+): Boolean {
+    @Suppress("DEPRECATION")
+    val downloads = android.os.Environment.getExternalStoragePublicDirectory(
+        android.os.Environment.DIRECTORY_DOWNLOADS
+    )
+    if (!downloads.exists() && !downloads.mkdirs()) return false
+
+    // Don't clobber an existing file of the same name.
+    var target = File(downloads, name)
+    if (target.exists()) {
+        val stem = name.substringBeforeLast('.', name)
+        val ext = name.substringAfterLast('.', "")
+        var i = 1
+        while (target.exists()) {
+            target = File(downloads, if (ext.isEmpty()) "$stem ($i)" else "$stem ($i).$ext")
+            i++
+        }
+    }
+
+    File(path).inputStream().use { input ->
+        target.outputStream().use { output -> input.copyTo(output) }
+    }
+
+    android.media.MediaScannerConnection.scanFile(
+        context, arrayOf(target.absolutePath), arrayOf(mime), null
+    )
+    return true
 }

@@ -83,23 +83,18 @@ class MainActivity : OrientationAwareActivity() {
         
         // Register receiver for force finish signal from shutdown coordinator
         val filter = android.content.IntentFilter(com.campusmesh.android.util.AppConstants.UI.ACTION_FORCE_FINISH)
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(
-                forceFinishReceiver,
-                filter,
-                com.campusmesh.android.util.AppConstants.UI.PERMISSION_FORCE_FINISH,
-                null,
-                android.content.Context.RECEIVER_NOT_EXPORTED
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            registerReceiver(
-                forceFinishReceiver,
-                filter,
-                com.campusmesh.android.util.AppConstants.UI.PERMISSION_FORCE_FINISH,
-                null
-            )
-        }
+        // ContextCompat picks the right platform call per API level, so there is one registration
+        // instead of a version-branched pair - and, unlike the hand-rolled branch, lint can see
+        // that the not-exported flag is always applied. On Android 14+ an unflagged
+        // registerReceiver throws SecurityException outright.
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
+            forceFinishReceiver,
+            filter,
+            com.campusmesh.android.util.AppConstants.UI.PERMISSION_FORCE_FINISH,
+            null,
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         
         // Check if this is a quit request from the notification
         if (intent.getBooleanExtra("ACTION_QUIT_APP", false)) {
@@ -347,6 +342,20 @@ class MainActivity : OrientationAwareActivity() {
                 // Add the callback - this will be automatically removed when the activity is destroyed
                 onBackPressedDispatcher.addCallback(this, backCallback)
 
+                // Campus-preset channel auto-join/leave: reacts to AppMode changes from
+                // LocationChannelManager's geofence check. Lives here (a sibling of the
+                // chat-list/conversation/settings/map Box below, so it stays composed regardless
+                // of which one is currently showing) rather than inside ChatScreen - it used to
+                // live there, but ChatScreen only composes once a conversation is opened, so a
+                // user who stayed on the chat list (the home screen) never triggered the
+                // #general-mesh cleanup after that preset was removed. See
+                // ChatScreen.kt's applyChannelsForMode for the actual join/leave logic.
+                LaunchedEffect(Unit) {
+                    com.campusmesh.android.services.AppStateStore.currentAppMode.collect { mode ->
+                        com.campusmesh.android.ui.applyChannelsForMode(mode, chatViewModel)
+                    }
+                }
+
                 // Chat list (new home screen) <-> conversation detail (existing ChatScreen),
                 // per docs/UI_REDESIGN_IMPLEMENTATION_PLAN.md Phase 2. ChatScreen itself is
                 // unchanged - it still reads its content from currentChannel/
@@ -390,7 +399,8 @@ class MainActivity : OrientationAwareActivity() {
                                         com.campusmesh.android.net.GithubUpdateChecker.downloadAndInstall(
                                             context = context,
                                             downloadUrl = status.downloadUrl,
-                                            apkFileName = status.apkFileName
+                                            apkFileName = status.apkFileName,
+                                            expectedSha256 = status.sha256
                                         )
                                     },
                                     onDismiss = { isUpdatePromptDismissed = true }
@@ -430,8 +440,19 @@ class MainActivity : OrientationAwareActivity() {
                                     isVisible = true,
                                     isDownloading = false,
                                     onInstall = {
-                                        val intent = com.campusmesh.android.net.OtaUpdateManager(context).buildInstallIntent(status.apkFile)
-                                        context.startActivity(intent)
+                                        // Re-verify the signing certificate here too: this file has
+                                        // sat on disk since the download completed.
+                                        val intent = com.campusmesh.android.net.OtaUpdateManager(context)
+                                            .verifyAndPrepareInstall(status.apkFile, expectedHash = null)
+                                        if (intent != null) {
+                                            context.startActivity(intent)
+                                        } else {
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                "Update rejected: APK failed signature verification.",
+                                                android.widget.Toast.LENGTH_LONG
+                                            ).show()
+                                        }
                                     },
                                     onDismiss = { isUpdatePromptDismissed = true }
                                 )
@@ -439,6 +460,12 @@ class MainActivity : OrientationAwareActivity() {
                         }
                         else -> {}
                     }
+
+                    // Global call overlay - an incoming call or an active call can happen while
+                    // the user is on the chat list, settings, map, or any conversation, so this
+                    // is drawn on top of whichever of those is currently showing rather than
+                    // being scoped to ChatScreen alone.
+                    com.campusmesh.android.call.CallOverlay()
                 }
             }
             
